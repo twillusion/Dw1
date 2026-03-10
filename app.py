@@ -2,7 +2,7 @@
 Flask + Flask-SocketIO server for the Digimon World 1 battle simulator.
 
 Each connected browser session gets its own BattleEngine instance running
-in a background greenlet (eventlet). Battle state is pushed to the client
+in a background thread. Battle state is pushed to the client
 via WebSocket events every tick (~30fps game logic).
 """
 
@@ -14,7 +14,7 @@ from engine.data import DIGIMON, TECHNIQUES
 app = Flask(__name__, static_folder="static", template_folder="static")
 app.config["SECRET_KEY"] = "dw1-battle-sim-secret"
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # Active battles keyed by session ID
 _battles: dict[str, BattleEngine] = {}
@@ -106,8 +106,9 @@ def on_start_battle(data):
     # Join the session's own room so emit_fn can target it
     join_room(sid)
 
-    # Start the battle in a background task (eventlet greenlet)
-    socketio.start_background_task(engine.start)
+    # Start the battle in a background thread
+    import threading
+    threading.Thread(target=engine.start, daemon=True).start()
 
     emit("battle_started", {
         "player": engine.player.to_dict(),
