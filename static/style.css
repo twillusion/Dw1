@@ -437,17 +437,18 @@ select:hover { border-color: #8080cc; }
 .ahud-cmds { margin-top: 6px; }
 .ahud-techs { margin-top: 4px; }
 
-.sprite.attacking {
+/* Animations target .sprite-inner so billboard rotateX on .sprite is preserved */
+.sprite.attacking .sprite-inner {
   animation: attack-flash 0.15s ease-out;
 }
-.sprite.hurt {
+.sprite.hurt .sprite-inner {
   animation: hurt-flash 0.3s ease-out;
 }
 
 @keyframes attack-flash {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(1.25) translateY(-6px); }
-  100% { transform: scale(1); }
+  0%   { transform: scale(1) translateY(0); }
+  50%  { transform: scale(1.2) translateY(-6px); }
+  100% { transform: scale(1) translateY(0); }
 }
 @keyframes hurt-flash {
   0%   { filter: brightness(1) saturate(1); }
@@ -458,7 +459,7 @@ select:hover { border-color: #8080cc; }
 /* -------------------------------------------------------
    Sprite state classes (set by setSpriteState in JS)
 ------------------------------------------------------- */
-.sprite.state-winding_up {
+.sprite.state-winding_up .sprite-inner {
   animation: windup-pulse 0.4s ease-in-out infinite alternate;
 }
 .sprite.state-attacking {
