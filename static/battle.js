@@ -401,6 +401,11 @@ socket.on('disconnect', () => console.log('[WS] Disconnected'));
 
 socket.on('battle_started', data => {
   initHUD(data.player, data.opponent);
+  // Place sprites at their starting positions before the first tick arrives
+  requestAnimationFrame(() => {
+    positionSprite(el.plSprite,  data.player.pos_x,   data.player.pos_z);
+    positionSprite(el.oppSprite, data.opponent.pos_x, data.opponent.pos_z);
+  });
 });
 
 socket.on('battle_state', data => {
@@ -460,6 +465,13 @@ socket.on('error', data => {
 function updateSpritePositions(player, opponent) {
   positionSprite(el.plSprite, player.pos_x, player.pos_z);
   positionSprite(el.oppSprite, opponent.pos_x, opponent.pos_z);
+  setSpriteState(el.plSprite,  player.state);
+  setSpriteState(el.oppSprite, opponent.state);
+}
+
+function setSpriteState(spriteEl, state) {
+  spriteEl.classList.remove('state-idle', 'state-moving', 'state-attacking', 'state-hurt', 'state-winding_up');
+  spriteEl.classList.add('state-' + state);
 }
 
 function positionSprite(spriteEl, pos_x, pos_z) {

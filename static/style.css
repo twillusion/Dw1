@@ -279,8 +279,29 @@ select:hover { border-color: #8080cc; }
   position: relative;
   overflow: hidden;
   min-height: 140px;
-  background: linear-gradient(180deg, #06060f 0%, #0a0a18 60%, #0d0d28 100%);
-  /* CSS perspective applied to the .field child, not the arena itself */
+  /* Sky → grass transition */
+  background: linear-gradient(180deg,
+    #0c0c22 0%,
+    #1a2a5a 45%,
+    #2a5a2a 55%,
+    #1a3a12 100%
+  );
+}
+
+/* Perspective dirt/grass oval on the ground plane */
+.arena::before {
+  content: '';
+  position: absolute;
+  bottom: 8%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 82%;
+  height: 20%;
+  background: radial-gradient(ellipse, #6a4f1a 0%, #3a7a20 55%, transparent 100%);
+  border-radius: 50%;
+  opacity: 0.5;
+  pointer-events: none;
+  z-index: 1;
 }
 
 /* Ground canvas — perspective grid drawn by JS */
@@ -312,6 +333,8 @@ select:hover { border-color: #8080cc; }
   transition: left 0.1s linear, top 0.1s linear, transform 0.1s linear;
   z-index: 10;
   pointer-events: none;
+  /* Ground shadow for depth */
+  filter: drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
 }
 
 /* Sprite inner emoji — size scales with depth via JS transform: scale() */
@@ -322,10 +345,10 @@ select:hover { border-color: #8080cc; }
 }
 
 .opponent-sprite {
-  filter: drop-shadow(0 4px 8px var(--opp-glow));
+  filter: drop-shadow(0 4px 8px var(--opp-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
 }
 .player-sprite {
-  filter: drop-shadow(0 4px 8px var(--player-glow));
+  filter: drop-shadow(0 4px 8px var(--player-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
 }
 
 /* WIDE move warning flash on arena background */
@@ -333,8 +356,8 @@ select:hover { border-color: #8080cc; }
   animation: wide-flash 0.5s ease infinite alternate;
 }
 @keyframes wide-flash {
-  from { background: linear-gradient(180deg, #06060f 0%, #0a0a18 60%, #0d0d28 100%); }
-  to   { background: linear-gradient(180deg, #1a0606 0%, #200a0a 60%, #1a0606 100%); }
+  from { background: linear-gradient(180deg, #0c0c22 0%, #1a2a5a 45%, #2a5a2a 55%, #1a3a12 100%); }
+  to   { background: linear-gradient(180deg, #2a0c0c 0%, #5a1a1a 45%, #5a2a1a 55%, #3a1a0a 100%); }
 }
 
 .sprite.attacking {
@@ -353,6 +376,27 @@ select:hover { border-color: #8080cc; }
   0%   { filter: brightness(1) saturate(1); }
   25%  { filter: brightness(3) saturate(0) drop-shadow(0 0 8px #fff); }
   100% { filter: brightness(1) saturate(1); }
+}
+
+/* -------------------------------------------------------
+   Sprite state classes (set by setSpriteState in JS)
+------------------------------------------------------- */
+.sprite.state-winding_up {
+  animation: windup-pulse 0.4s ease-in-out infinite alternate;
+}
+.sprite.state-attacking {
+  filter: brightness(1.7) drop-shadow(0 0 14px #fff) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+}
+.opponent-sprite.state-attacking {
+  filter: brightness(1.7) drop-shadow(0 0 14px var(--opp-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+}
+.player-sprite.state-attacking {
+  filter: brightness(1.7) drop-shadow(0 0 14px var(--player-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+}
+
+@keyframes windup-pulse {
+  from { transform: scale(1.0); }
+  to   { transform: scale(1.09); }
 }
 
 /* Damage number floaters */

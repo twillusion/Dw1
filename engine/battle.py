@@ -186,13 +186,16 @@ class BattleEngine:
         self.tick_count += 1
         t = self.tick_count
 
-        # 1. Tick timers
+        # 1. Tick timers + stamina regen
         for f in (self.player, self.opponent):
             f.tick_speed_buffer(t)
             f.tick_cooldown()
             f.tick_status_timers()
+            f.stamina = min(100.0, f.stamina + f.stamina_regen)
 
-        # 2. Move fighters (approach/retreat + lateral dodge)
+        # 2. Assess threat and move fighters
+        self._assess_threat(self.player, self.opponent)
+        self._assess_threat(self.opponent, self.player)
         self._move_fighter(self.player, self.opponent)
         self._move_fighter(self.opponent, self.player)
 
@@ -230,7 +233,11 @@ class BattleEngine:
             self._emit_state()
             return
 
-        # 9. Let each fighter act if able
+        # 9a. Tick windups — fire queued attacks when countdown reaches zero
+        self._tick_windup(self.player, self.opponent)
+        self._tick_windup(self.opponent, self.player)
+
+        # 9b. Let each fighter start a new action if able
         for attacker, defender in [
             (self.player, self.opponent),
             (self.opponent, self.player),
@@ -245,43 +252,186 @@ class BattleEngine:
     # Spatial movement AI
     # -----------------------------------------------------------------------
 
+    def _assess_threat(self, f: Fighter, other: Fighter):
+        """
+        Dynamically adjust preferred_distance based on opponent threat level.
+        High threat (healthy opponent) → maintain or increase distance.
+        Low threat (tired/weakened opponent) → close in aggressively.
+        """
+        opp_threat = (other.stamina / 100.0) * 0.5 + (other.current_hp / max(1, other.max_hp)) * 0.5
+        # Map threat 0–1 → delta ±5 units around base distance
+        delta = (opp_threat - 0.5) * 10.0
+        f.preferred_distance = max(10.0, min(60.0, f._base_preferred_distance + delta))
+
     def _move_fighter(self, f: Fighter, other: Fighter):
         """
         Move fighter toward/away from opponent to maintain preferred_distance.
-        Also performs lateral dodge if a dodgeable projectile is incoming.
+        Includes: idle lateral strafing, charge boost for melee, knockback, and
+        lateral dodge when a dodgeable projectile is incoming.
         """
+        # --- Knockback overrides normal movement ---
+        if f.knockback_ticks > 0:
+            f.pos_z = max(5.0, min(95.0, f.pos_z + f.knockback_vel_z))
+            f.knockback_ticks -= 1
+            return
+
+        # --- Z-axis: approach / retreat ---
         dist = abs(other.pos_z - f.pos_z)
         target = f.preferred_distance
 
+        # Charge boost: melee fighters sprint when far from the opponent
+        if dist > target + 25 and f._base_preferred_distance <= 22:
+            effective_speed = f.move_speed * 2.0
+        else:
+            effective_speed = f.move_speed
+
         if dist > target + 5:
-            # Move toward opponent along z
-            f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.pos_z += effective_speed * _sign(other.pos_z - f.pos_z)
             f.state = "moving"
         elif dist < target - 5:
-            # Back off along z
-            f.pos_z -= f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.pos_z -= effective_speed * _sign(other.pos_z - f.pos_z)
             f.state = "moving"
         else:
             f.state = "idle"
 
-        # Clamp z to field bounds
         f.pos_z = max(5.0, min(95.0, f.pos_z))
 
-        # Lateral dodge: only for dodgeable projectiles aimed at this fighter
+        # --- X-axis: idle strafing (always active) ---
+        if f.strafe_timer <= 0:
+            f.strafe_target_x = random.uniform(-40.0, 40.0)
+            f.strafe_timer = random.randint(40, 80)
+        else:
+            f.strafe_timer -= 1
+
+        dx = f.strafe_target_x - f.pos_x
+        if abs(dx) > 1.0:
+            f.pos_x += _sign(dx) * f.move_speed * 0.35
+        f.pos_x = max(-55.0, min(55.0, f.pos_x))
+
+        # --- Lateral dodge for incoming projectiles ---
         for p in self.projectiles:
             if p.defender_name != f.name or not p.dodgeable:
                 continue
-            # Only react when projectile is within ~25 ticks of arrival
             dist_z = abs(p.pos_z - f.pos_z)
             ticks_away = dist_z / max(abs(p.vel_z), 0.1)
             if ticks_away < 25 and abs(p.pos_x - f.pos_x) < DODGE_THRESHOLD * 1.5:
-                if random.random() < 0.40:  # 40% per tick → not a certainty
+                if random.random() < 0.40:
                     direction = 1 if f.pos_x <= 0 else -1
-                    f.pos_x = max(-50.0, min(50.0, f.pos_x + direction * f.move_speed * 1.5))
+                    f.pos_x = max(-55.0, min(55.0, f.pos_x + direction * f.move_speed * 1.8))
+                    f.strafe_target_x = f.pos_x  # prevent immediate drift back
 
-        # Drift back toward x=0 when not dodging (fighters don't run off forever)
-        if abs(f.pos_x) > 2:
-            f.pos_x -= _sign(f.pos_x) * min(abs(f.pos_x), f.move_speed * 0.5)
+    # -----------------------------------------------------------------------
+    # Windup system
+    # -----------------------------------------------------------------------
+
+    def _tick_windup(self, attacker: Fighter, defender: Fighter):
+        """
+        Count down the windup on a queued technique and fire it when done.
+        """
+        if not attacker.windup_action:
+            return
+        attacker.windup_ticks_remaining -= 1
+        attacker.state = "winding_up"
+        if attacker.windup_ticks_remaining <= 0:
+            tech_name = attacker.windup_action
+            attacker.windup_action = None
+            self._fire_windup_technique(attacker, defender, tech_name)
+
+    def _fire_windup_technique(self, attacker: Fighter, defender: Fighter, tech_name: str):
+        """
+        Execute a SHORT or LONG technique that completed its windup.
+        MP has already been deducted; speed buffer already reset.
+        """
+        if tech_name not in TECHNIQUES:
+            return
+        tech = TECHNIQUES[tech_name]
+        tech_range = tech["range"]
+
+        # Range re-check for SHORT: fighter may not have closed distance in time
+        if tech_range == "SHORT":
+            dist = abs(defender.pos_z - attacker.pos_z)
+            if dist > SHORT_RANGE_THRESHOLD:
+                # Too far — refund MP and let fighter retry
+                mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
+                attacker.current_mp = min(attacker.max_mp, attacker.current_mp + mp_cost)
+                attacker.state = "moving"
+                return
+
+        hit_chance = calc_hit_chance(
+            attacker_speed=attacker.speed,
+            victim_speed=defender.speed,
+            move_accuracy=tech["accuracy"],
+        )
+        attacker.state = "attacking"
+        type_label = _type_label(tech["type"], defender.def_type)
+
+        # --- LONG move → traveling projectile ---
+        if tech_range == "LONG":
+            if not roll_hit(hit_chance):
+                self._log_event("miss", f"{attacker.name} fires {tech_name}... but it misses!", color="#95a5a6")
+                return
+            dmg = calc_damage(
+                attacker_offense=attacker.effective_offense,
+                defender_defense=defender.effective_defense,
+                move_power=tech["power"],
+                attacker_type=tech["type"],
+                defender_type=defender.def_type,
+                mastery_count=attacker.mastery_counts.get(tech_name, 0),
+                is_enemy=not attacker.is_player,
+            )
+            attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
+            dx = defender.pos_x - attacker.pos_x
+            dz = defender.pos_z - attacker.pos_z
+            dist_to_target = math.sqrt(dx * dx + dz * dz) or 1.0
+            vel_x = (dx / dist_to_target) * PROJECTILE_SPEED
+            vel_z = (dz / dist_to_target) * PROJECTILE_SPEED
+            proj = Projectile(
+                id=self._next_id,
+                pos_x=attacker.pos_x, pos_z=attacker.pos_z,
+                vel_x=vel_x, vel_z=vel_z,
+                attacker_name=attacker.name, defender_name=defender.name,
+                tech_name=tech_name, damage=dmg,
+                status=tech["status"], status_chance=tech.get("status_chance", 0),
+                dodgeable=tech.get("dodgeable", True),
+            )
+            self._next_id += 1
+            self.projectiles.append(proj)
+            self._log_event("attack", f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!", color=attacker.color, damage=dmg)
+            return
+
+        # --- SHORT move → instant damage ---
+        if not roll_hit(hit_chance):
+            self._log_event("miss", f"{attacker.name} uses {tech_name}... but misses!", color="#95a5a6")
+            return
+        dmg = calc_damage(
+            attacker_offense=attacker.effective_offense,
+            defender_defense=defender.effective_defense,
+            move_power=tech["power"],
+            attacker_type=tech["type"],
+            defender_type=defender.def_type,
+            mastery_count=attacker.mastery_counts.get(tech_name, 0),
+            is_enemy=not attacker.is_player,
+        )
+        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + dmg)
+        attacker.hit_count += 1
+        if dmg > 200:
+            attacker.heavy_hit_count += 1
+        attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
+
+        # Knockback: attacker stumbles back; defender staggers away
+        attacker.knockback_ticks = 8
+        attacker.knockback_vel_z = -attacker.move_speed * 1.2 * _sign(defender.pos_z - attacker.pos_z)
+        defender.knockback_ticks = 6
+        defender.knockback_vel_z = attacker.move_speed * 1.0 * _sign(defender.pos_z - attacker.pos_z)
+
+        status_msg = ""
+        if tech["status"] and roll_status(tech.get("status_chance", 0)):
+            defender.apply_status(tech["status"])
+            status_msg = f" {defender.name} is {tech['status'].lower()}ed!"
+        self._log_event("attack", f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}", color=attacker.color, damage=dmg)
+        attacker.advance_finisher()
+        if attacker.finisher_ready:
+            self._trigger_finisher(attacker, defender)
 
     # -----------------------------------------------------------------------
     # Projectile system
@@ -338,6 +488,9 @@ class BattleEngine:
             attacker.advance_finisher()
             if attacker.finisher_ready:
                 self._trigger_finisher(attacker, defender)
+            # Defender staggers backward on hit
+            defender.knockback_ticks = 6
+            defender.knockback_vel_z = attacker.move_speed * _sign(defender.pos_z - attacker.pos_z)
 
         status_msg = ""
         if p.status and roll_status(p.status_chance):
@@ -375,6 +528,9 @@ class BattleEngine:
             attacker.advance_finisher()
             if attacker.finisher_ready:
                 self._trigger_finisher(attacker, defender)
+            # WIDE hit: defender staggers backward
+            defender.knockback_ticks = 8
+            defender.knockback_vel_z = attacker.move_speed * _sign(defender.pos_z - attacker.pos_z)
 
         status_msg = ""
         if dh.status and roll_status(dh.status_chance):
@@ -393,7 +549,7 @@ class BattleEngine:
     # -----------------------------------------------------------------------
 
     def _execute_action(self, attacker: Fighter, defender: Fighter):
-        # Confused? May attack self
+        # Confused? Attack self immediately (no windup — chaos move)
         if attacker.is_confused and confusion_attacks_self():
             self._log_event(
                 "status",
@@ -414,14 +570,15 @@ class BattleEngine:
             attacker.reset_speed_buffer()
             return
 
-        # Choose technique
+        # Choose technique (aggression boost when opponent is exhausted)
+        aggression_boost = defender.stamina < 40.0
         if hasattr(attacker, "_manual_tech") and attacker._manual_tech:
             tech_name = attacker._manual_tech
             attacker._manual_tech = None
             if tech_name not in attacker.techniques or tech_name not in TECHNIQUES:
-                tech_name = attacker.choose_technique()
+                tech_name = attacker.choose_technique(aggression_boost)
         else:
-            tech_name = attacker.choose_technique()
+            tech_name = attacker.choose_technique(aggression_boost)
 
         if tech_name is None:
             attacker.reset_speed_buffer()
@@ -431,41 +588,26 @@ class BattleEngine:
         tech = TECHNIQUES[tech_name]
         tech_range = tech["range"]
 
-        # Range check for SHORT moves — must be close enough
-        if tech_range == "SHORT":
-            dist = abs(defender.pos_z - attacker.pos_z)
-            if dist > SHORT_RANGE_THRESHOLD:
-                # Not close enough yet — don't reset speed buffer, keep advancing
-                attacker.state = "moving"
-                return
-
-        # Deduct MP
-        mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
-        if attacker.current_mp < mp_cost:
-            attacker.reset_speed_buffer()
-            return
-        attacker.current_mp -= mp_cost
-
-        # Statistical hit/miss check (always applies)
-        hit_chance = calc_hit_chance(
-            attacker_speed=attacker.speed,
-            victim_speed=defender.speed,
-            move_accuracy=tech["accuracy"],
-        )
-
-        attacker.state = "attacking"
-        attacker.reset_speed_buffer()
-
-        type_label = _type_label(tech["type"], defender.def_type)
-
-        # --- WIDE move → queued delayed hit ---
+        # --- WIDE move → immediate (has its own built-in delay; no windup needed) ---
         if tech_range == "WIDE":
+            mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
+            if attacker.current_mp < mp_cost:
+                attacker.reset_speed_buffer()
+                return
+            attacker.current_mp -= mp_cost
+            attacker.stamina = max(0.0, attacker.stamina - 15.0)
+
+            hit_chance = calc_hit_chance(
+                attacker_speed=attacker.speed,
+                victim_speed=defender.speed,
+                move_accuracy=tech["accuracy"],
+            )
+            attacker.state = "attacking"
+            attacker.reset_speed_buffer()
+            type_label = _type_label(tech["type"], defender.def_type)
+
             if not roll_hit(hit_chance):
-                self._log_event(
-                    "miss",
-                    f"{attacker.name} uses {tech_name}... but it fizzles!",
-                    color="#95a5a6",
-                )
+                self._log_event("miss", f"{attacker.name} uses {tech_name}... but it fizzles!", color="#95a5a6")
                 return
 
             dmg = calc_damage(
@@ -491,7 +633,6 @@ class BattleEngine:
             self._next_id += 1
             self.delayed_hits.append(dh)
             attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
-
             self._log_event(
                 "wide_warning",
                 f"⚡ {attacker.name} charges {tech_name}{type_label}! ({delay // TICK_RATE:.1f}s warning)",
@@ -499,98 +640,26 @@ class BattleEngine:
             )
             return
 
-        # --- LONG move → traveling projectile ---
-        if tech_range == "LONG":
-            if not roll_hit(hit_chance):
-                self._log_event(
-                    "miss",
-                    f"{attacker.name} fires {tech_name}... but it misses!",
-                    color="#95a5a6",
-                )
-                return
+        # Range check for SHORT moves — must be close enough before starting windup
+        if tech_range == "SHORT":
+            dist = abs(defender.pos_z - attacker.pos_z)
+            if dist > SHORT_RANGE_THRESHOLD:
+                attacker.state = "moving"
+                return  # Keep approaching; speed buffer not reset
 
-            dmg = calc_damage(
-                attacker_offense=attacker.effective_offense,
-                defender_defense=defender.effective_defense,
-                move_power=tech["power"],
-                attacker_type=tech["type"],
-                defender_type=defender.def_type,
-                mastery_count=attacker.mastery_counts.get(tech_name, 0),
-                is_enemy=not attacker.is_player,
-            )
-            attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
-
-            # Velocity toward defender's CURRENT position (not tracking)
-            dx = defender.pos_x - attacker.pos_x
-            dz = defender.pos_z - attacker.pos_z
-            dist_to_target = math.sqrt(dx * dx + dz * dz) or 1.0
-            vel_x = (dx / dist_to_target) * PROJECTILE_SPEED
-            vel_z = (dz / dist_to_target) * PROJECTILE_SPEED
-
-            proj = Projectile(
-                id=self._next_id,
-                pos_x=attacker.pos_x,
-                pos_z=attacker.pos_z,
-                vel_x=vel_x,
-                vel_z=vel_z,
-                attacker_name=attacker.name,
-                defender_name=defender.name,
-                tech_name=tech_name,
-                damage=dmg,
-                status=tech["status"],
-                status_chance=tech.get("status_chance", 0),
-                dodgeable=tech.get("dodgeable", True),
-            )
-            self._next_id += 1
-            self.projectiles.append(proj)
-
-            self._log_event(
-                "attack",
-                f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!",
-                color=attacker.color,
-                damage=dmg,
-            )
+        # Deduct MP and start 20-tick windup for SHORT/LONG moves
+        mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
+        if attacker.current_mp < mp_cost:
+            attacker.reset_speed_buffer()
             return
+        attacker.current_mp -= mp_cost
+        attacker.stamina = max(0.0, attacker.stamina - 15.0)
 
-        # --- SHORT move → instant damage ---
-        if not roll_hit(hit_chance):
-            self._log_event(
-                "miss",
-                f"{attacker.name} uses {tech_name}... but misses!",
-                color="#95a5a6",
-            )
-            return
-
-        dmg = calc_damage(
-            attacker_offense=attacker.effective_offense,
-            defender_defense=defender.effective_defense,
-            move_power=tech["power"],
-            attacker_type=tech["type"],
-            defender_type=defender.def_type,
-            mastery_count=attacker.mastery_counts.get(tech_name, 0),
-            is_enemy=not attacker.is_player,
-        )
-        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + dmg)
-        attacker.hit_count += 1
-        if dmg > 200:
-            attacker.heavy_hit_count += 1
-        attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
-
-        status_msg = ""
-        if tech["status"] and roll_status(tech.get("status_chance", 0)):
-            defender.apply_status(tech["status"])
-            status_msg = f" {defender.name} is {tech['status'].lower()}ed!"
-
-        self._log_event(
-            "attack",
-            f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}",
-            color=attacker.color,
-            damage=dmg,
-        )
-
-        attacker.advance_finisher()
-        if attacker.finisher_ready:
-            self._trigger_finisher(attacker, defender)
+        # Reset speed buffer now — locks out can_act during windup
+        attacker.reset_speed_buffer()
+        attacker.windup_action = tech_name
+        attacker.windup_ticks_remaining = 20
+        attacker.state = "winding_up"
 
     # -----------------------------------------------------------------------
     # Finisher

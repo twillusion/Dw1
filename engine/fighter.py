@@ -73,8 +73,25 @@ class Fighter:
     pos_x: float = field(default=0.0, init=False)
     pos_z: float = field(default=0.0, init=False)
     move_speed: float = field(default=MOVE_SPEED, init=False)
-    preferred_distance: int = field(default=35, init=False)
-    state: str = field(default="idle", init=False)  # idle|moving|attacking|hurt
+    preferred_distance: float = field(default=35.0, init=False)
+    _base_preferred_distance: float = field(default=35.0, init=False)
+    state: str = field(default="idle", init=False)  # idle|moving|attacking|hurt|winding_up
+
+    # Stamina (exhaustion meter) — drains per attack, recovers slowly each tick
+    stamina: float = field(default=100.0, init=False)
+    stamina_regen: float = field(default=0.08, init=False)
+
+    # Idle strafe — fighters pick a new lateral target every 40–80 ticks
+    strafe_target_x: float = field(default=0.0, init=False)
+    strafe_timer: int = field(default=0, init=False)
+
+    # Knockback — overrides normal z-movement for a few ticks after a hit
+    knockback_ticks: int = field(default=0, init=False)
+    knockback_vel_z: float = field(default=0.0, init=False)
+
+    # Windup — queues an attack for 20 ticks before firing
+    windup_ticks_remaining: int = field(default=0, init=False)
+    windup_action: str | None = field(default=None, init=False)
 
     # Techniques available
     techniques: list = field(default_factory=list)
@@ -100,7 +117,8 @@ class Fighter:
         self.starting_hp = self.max_hp
         for tech in self.techniques:
             self.mastery_counts[tech] = 0
-        self.preferred_distance = self._calc_preferred_distance()
+        self.preferred_distance = float(self._calc_preferred_distance())
+        self._base_preferred_distance = self.preferred_distance
 
     def _calc_preferred_distance(self) -> int:
         """
@@ -253,7 +271,7 @@ class Fighter:
         self.finisher_progress = 0
         self.finisher_ready = False
 
-    def choose_technique(self) -> str | None:
+    def choose_technique(self, aggression_boost: bool = False) -> str | None:
         """
         AI/command-based technique selection.
 
@@ -262,6 +280,8 @@ class Fighter:
         Defend   → lowest power move (conserve resources)
         Auto     → random weighted by power
         Manual   → same as All-Out (player override handled by server)
+
+        aggression_boost: when True (opponent stamina < 40%), always pick max power.
         """
         available = [
             t for t in self.techniques
@@ -270,7 +290,7 @@ class Fighter:
         if not available:
             return None
 
-        if self.command in ("All-Out", "Manual"):
+        if aggression_boost or self.command in ("All-Out", "Manual"):
             return max(available, key=lambda t: TECHNIQUES[t]["power"])
         elif self.command == "Careful":
             return min(available, key=lambda t: TECHNIQUES[t]["mp_cost"])
@@ -316,6 +336,7 @@ class Fighter:
             "pos_z": round(self.pos_z, 2),
             "state": self.state,
             "preferred_distance": self.preferred_distance,
+            "stamina": round(self.stamina, 1),
         }
 
 

@@ -370,7 +370,7 @@ SHORT_RANGE_THRESHOLD = 25
 
 # Fixed movement speed for all Digimon (units per tick at 30 ticks/sec)
 # Can be individualised per Digimon in a future iteration
-MOVE_SPEED = 1.2
+MOVE_SPEED = 0.72
 
 # Preferred standoff distances (field units)
 PREFERRED_DIST_MELEE  = 18   # all SHORT range → close in
@@ -378,7 +378,7 @@ PREFERRED_DIST_RANGED = 45   # all LONG range  → maintain distance
 PREFERRED_DIST_MIXED  = 32   # mixed moveset   → medium range
 
 # Projectile travel speed (field units per tick)
-PROJECTILE_SPEED = 2.5
+PROJECTILE_SPEED = 1.625
 
 # Collision radius: projectile hits if it gets within this many x-units of the
 # defender. Intentionally lenient so ranged attacks land most of the time.
