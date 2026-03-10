@@ -36,17 +36,17 @@ pos_x = 0   → center; ±60 = field edges; boundary lines at ±55
 ## CSS 3D Arena — Current Parameters
 
 `#arena-scene`:
-- `perspective: 700px`
-- `perspective-origin: 50% 15%`  ← horizon near top = elevated/RTS camera feel
+- `perspective: 800px`
+- `perspective-origin: 50% 30%`
 
 `#ground-plane`:
-- `top: 15%`
-- `rotateX(70deg)`
-- `height: 80%`
+- `top: 0%`  ← far edge flush with screen top = NO sky / no horizon visible
+- `rotateX(78deg)`  ← steep RTS-style viewing angle
+- `height: 130%`  ← extends past screen bottom so near edge is never clipped
 
 Counter-rotations (must always equal −rotateX to keep billboards upright):
-- `.sprite`: `rotateX(-70deg)`
-- `.projectile-dot`: `rotateX(-70deg)`
+- `.sprite`: `rotateX(-78deg)`
+- `.projectile-dot`: `rotateX(-78deg)`
 
 Coordinate mapping in `battle.js → setGroundPos()`:
 ```js
@@ -61,13 +61,16 @@ Boundary divs: gold vertical lines at `left: 42.5%` and `57.5%`; horizontal back
 `height_px × sin(rotateX) < perspective` — the near edge of the plane must not cross
 the camera plane or CSS silently clips all geometry.
 
-Current headroom: `0.80 × arena_h × sin(70°) ≈ 263px < 700px` ✓
+Current headroom: `1.30 × arena_h × sin(78°) ≈ 381px < 800px` ✓
 
 **These values are coupled: `perspective`, `top`, `rotateX`, `height`, and both
-counter-rotations must all be changed together.** History: original values
-(`perspective: 420px`, `height: 300%`, `rotateX(68°)`) put the near edge behind the
-camera and caused all sprites to vanish. Then raised to 500px/70%/60° to fix that.
-Current 700px/80%/70° adds RTS-style elevated camera.
+counter-rotations must all be changed together.**
+
+History:
+- `420px/300%/68°` — near edge behind camera → all sprites invisible
+- `500px/70%/60°` — fixed clipping, but camera too low (ground-level view)
+- `700px/80%/70°` — slightly elevated, sky still visible (top: 15%)
+- `800px/130%/78°` — RTS camera: top: 0% eliminates sky, steep angle
 
 ## Game Mechanics (key formulas)
 

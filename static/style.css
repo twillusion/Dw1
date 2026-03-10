@@ -270,21 +270,21 @@ select:hover { border-color: #8080cc; }
 #arena-scene {
   position: absolute;
   inset: 0;
-  perspective: 700px;
-  perspective-origin: 50% 15%;
+  perspective: 800px;
+  perspective-origin: 50% 30%;
   z-index: 1;
 }
 
 /* Tilted ground plane */
 #ground-plane {
   position: absolute;
-  top: 15%;
+  top: 0%;
   left: 50%;
-  transform: translateX(-50%) rotateX(70deg);
+  transform: translateX(-50%) rotateX(78deg);
   transform-origin: top center;
   transform-style: preserve-3d;
   width: 220%;
-  height: 80%;
+  height: 130%;
   background:
     repeating-linear-gradient(
       0deg,
@@ -323,7 +323,7 @@ select:hover { border-color: #8080cc; }
   position: absolute;
   bottom: 0;
   left: 0;
-  transform: translateX(-50%) rotateX(-70deg);
+  transform: translateX(-50%) rotateX(-78deg);
   transform-origin: bottom center;
   transform-style: preserve-3d;
   display: flex;
@@ -358,7 +358,7 @@ select:hover { border-color: #8080cc; }
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  transform: translate(-50%, -50%) rotateX(-70deg);
+  transform: translate(-50%, -50%) rotateX(-78deg);
   transform-origin: center center;
 }
 
