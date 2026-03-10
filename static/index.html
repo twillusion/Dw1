@@ -48,36 +48,8 @@
   <!-- Arena — now full height, HUDs live inside -->
   <div class="arena" id="arena">
 
-    <!-- Sky art layer -->
-    <div id="arena-sky"></div>
-
-    <!-- CSS 3D scene: perspective container → rotated ground plane -->
-    <div id="arena-scene">
-      <div id="ground-plane">
-        <!-- Field boundary lines -->
-        <div class="field-line field-line-left"></div>
-        <div class="field-line field-line-right"></div>
-        <div class="field-line field-line-back"></div>
-        <!-- Projectile CSS divs -->
-        <div id="proj-layer"></div>
-
-        <!-- Opponent sprite anchor (positioned on ground plane) -->
-        <div id="opp-anchor" class="sprite-anchor">
-          <div class="sprite-shadow"></div>
-          <div id="opp-sprite" class="sprite opponent-sprite">
-            <span class="sprite-inner" id="opp-sprite-emoji"></span>
-          </div>
-        </div>
-
-        <!-- Player sprite anchor -->
-        <div id="pl-anchor" class="sprite-anchor">
-          <div class="sprite-shadow"></div>
-          <div id="player-sprite" class="sprite player-sprite">
-            <span class="sprite-inner" id="pl-sprite-emoji"></span>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Three.js arena canvas -->
+    <canvas id="arena-canvas"></canvas>
 
     <!-- WIDE move pulsing warning overlay -->
     <div id="wide-warning-overlay"></div>
@@ -201,6 +173,7 @@
 </div>
 
 <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="/static/battle.js"></script>
 </body>
 </html>

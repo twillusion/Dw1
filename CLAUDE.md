@@ -33,44 +33,46 @@ pos_z = 100 → opponent side (far, screen top)
 pos_x = 0   → center; ±60 = field edges; boundary lines at ±55
 ```
 
-## CSS 3D Arena — Current Parameters
+## Three.js Arena
 
-`#arena-scene`:
-- `perspective: 800px`
-- `perspective-origin: 50% 30%`
+The CSS-3D approach was abandoned after it proved impossible to eliminate the sky/horizon
+using CSS `perspective` + `rotateX`. CSS perspective-origin moves the vanishing point but
+cannot position the camera above the field. Three.js solves this directly.
 
-`#ground-plane`:
-- `top: 0%`  ← far edge flush with screen top = NO sky / no horizon visible
-- `rotateX(78deg)`  ← steep RTS-style viewing angle
-- `height: 130%`  ← extends past screen bottom so near edge is never clipped
-
-Counter-rotations (must always equal −rotateX to keep billboards upright):
-- `.sprite`: `rotateX(-78deg)`
-- `.projectile-dot`: `rotateX(-78deg)`
-
-Coordinate mapping in `battle.js → setGroundPos()`:
+### Camera
 ```js
-topPct  = 5 + (1 - pos_z / 100) * 85   // far(100)→5%, near(0)→90%
-leftPct = 50 + (pos_x / 110) * 15      // ±55 → ±7.5% from center
+camera.position.set(0, 150, 80);  // high in sky, behind player side
+camera.lookAt(0, 0, 0);           // look at field center
+// PerspectiveCamera fov=45°, near=0.1, far=1000
+```
+At this position the camera elevation from horizontal ≈ 62°. The frustum top edge hits
+world Z ≈ −100, well past the far boundary (Z=−50) — no horizon visible.
+
+### Coordinate Mapping (`battle.js → engineToWorld`)
+```js
+world_x = pos_x          // engine ±60 → world ±60
+world_z = 50 - pos_z     // engine 0 (near) → world +50; engine 100 (far) → world -50
 ```
 
-Boundary divs: gold vertical lines at `left: 42.5%` and `57.5%`; horizontal back line at `top: 5%`.
+### Scene Objects
+- Ground: `PlaneGeometry(140, 120)` dark green, + lighter strip on near half
+- Grid: `LineSegments`, spacing 10 world units, opacity 0.20
+- Boundary: gold `LineSegments` at world x=±55 and z=−50
+- Fighters: `THREE.Sprite` with `CanvasTexture` (emoji drawn at 90px serif)
+- Shadows: flat `PlaneGeometry` at y=0.05
+- Projectiles: `THREE.Sprite` with radial gradient CanvasTexture, `AdditiveBlending`
 
-### Safety constraint (do not violate)
+### Sprite Animation (render loop)
+- `winding_up`: scale pulse `BASE_SCALE * (1 + 0.09 * sin(renderTime * π * 5))`
+- `attacking`: `material.color.setRGB(1.7, 1.7, 1.7)` — brightness boost for 300ms
+- `hurt`: white flash for 300ms
+- Managed via `fighters.player/opponent.flashClass` + `flashUntil` timestamp
 
-`height_px × sin(rotateX) < perspective` — the near edge of the plane must not cross
-the camera plane or CSS silently clips all geometry.
-
-Current headroom: `1.30 × arena_h × sin(78°) ≈ 381px < 800px` ✓
-
-**These values are coupled: `perspective`, `top`, `rotateX`, `height`, and both
-counter-rotations must all be changed together.**
-
-History:
-- `420px/300%/68°` — near edge behind camera → all sprites invisible
-- `500px/70%/60°` — fixed clipping, but camera too low (ground-level view)
-- `700px/80%/70°` — slightly elevated, sky still visible (top: 15%)
-- `800px/130%/78°` — RTS camera: top: 0% eliminates sky, steep angle
+### CDN
+```html
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+```
+r128 = last version with plain `<script>` global `THREE`. No build step.
 
 ## Game Mechanics (key formulas)
 

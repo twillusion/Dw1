@@ -242,157 +242,14 @@ select:hover { border-color: #8080cc; }
   background: #0c0c1e; /* fallback */
 }
 
-/* Sky art: gradient + star dots */
-#arena-sky {
+/* Three.js arena canvas — fills arena behind all overlays */
+#arena-canvas {
   position: absolute;
   inset: 0;
-  background:
-    radial-gradient(ellipse at 50% 110%, #1a3a10 0%, transparent 55%),
-    radial-gradient(ellipse at 50% -10%, #1a3a7a 0%, transparent 60%),
-    linear-gradient(180deg, #080814 0%, #0e1630 45%, #1a2a5a 65%, #0e1a0e 100%);
+  width: 100%;
+  height: 100%;
   z-index: 0;
-}
-#arena-sky::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  background-image:
-    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 75% 8%,  rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1px 1px at 40% 35%, rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 88% 22%, rgba(255,255,255,0.5) 0%, transparent 100%),
-    radial-gradient(1px 1px at 60% 12%, rgba(255,255,255,0.4) 0%, transparent 100%),
-    radial-gradient(1px 1px at 28% 5%,  rgba(255,255,255,0.3) 0%, transparent 100%),
-    radial-gradient(1px 1px at 92% 40%, rgba(255,255,255,0.2) 0%, transparent 100%);
-}
-
-/* CSS 3D scene container */
-#arena-scene {
-  position: absolute;
-  inset: 0;
-  perspective: 800px;
-  perspective-origin: 50% 30%;
-  z-index: 1;
-}
-
-/* Tilted ground plane */
-#ground-plane {
-  position: absolute;
-  top: 0%;
-  left: 50%;
-  transform: translateX(-50%) rotateX(78deg);
-  transform-origin: top center;
-  transform-style: preserve-3d;
-  width: 220%;
-  height: 130%;
-  background:
-    repeating-linear-gradient(
-      0deg,
-      transparent 0px, transparent 59px,
-      rgba(0,0,0,0.18) 60px
-    ),
-    repeating-linear-gradient(
-      90deg,
-      transparent 0px, transparent 59px,
-      rgba(0,0,0,0.18) 60px
-    ),
-    linear-gradient(to bottom, #2e6e1e 0%, #1a4a0e 100%);
-}
-
-/* Zero-size positioning anchor on the ground plane */
-.sprite-anchor {
-  position: absolute;
-  width: 0;
-  height: 0;
-  transform-style: preserve-3d;
-}
-
-/* Flat shadow ellipse — stays on ground (no billboard) */
-.sprite-shadow {
-  position: absolute;
-  width: 50px;
-  height: 18px;
-  border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(0,0,0,0.6) 0%, transparent 100%);
-  transform: translate(-50%, -50%);
-  pointer-events: none;
-}
-
-/* Billboard sprite — counter-rotates to stand upright */
-.sprite {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  transform: translateX(-50%) rotateX(-78deg);
-  transform-origin: bottom center;
-  transform-style: preserve-3d;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  pointer-events: none;
-  z-index: 2;
-}
-
-.sprite-inner {
-  font-size: 52px;
-  line-height: 1;
-  user-select: none;
-}
-
-.opponent-sprite {
-  filter: drop-shadow(0 0 8px var(--opp-glow));
-}
-.player-sprite {
-  filter: drop-shadow(0 0 8px var(--player-glow));
-}
-
-/* Projectile divs positioned on ground plane */
-.projectile {
-  position: absolute;
-  width: 0;
-  height: 0;
-  pointer-events: none;
-}
-.projectile-dot {
-  position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  transform: translate(-50%, -50%) rotateX(-78deg);
-  transform-origin: center center;
-}
-
-/* Field boundary lines on the ground plane */
-.field-line {
-  position: absolute;
-  pointer-events: none;
-}
-.field-line-left,
-.field-line-right {
-  top: 0; bottom: 0;
-  width: 2px;
-  background: linear-gradient(to bottom,
-    rgba(255,215,50,0) 0%,
-    rgba(255,215,50,0.55) 25%,
-    rgba(255,215,50,0.55) 75%,
-    rgba(255,215,50,0) 100%
-  );
-}
-/* pos_x = -55 → leftPct = 50 + (-55/110)*15 = 42.5% */
-.field-line-left  { left: 42.5%; }
-/* pos_x = +55 → leftPct = 50 + (55/110)*15  = 57.5% */
-.field-line-right { left: 57.5%; }
-/* Back boundary at pos_z = 100 (far end) → top: 5% */
-.field-line-back {
-  left: 42.5%; right: 42.5%;
-  top: 5%;
-  height: 2px;
-  background: linear-gradient(to right,
-    rgba(255,215,50,0) 0%,
-    rgba(255,215,50,0.55) 15%,
-    rgba(255,215,50,0.55) 85%,
-    rgba(255,215,50,0) 100%
-  );
+  display: block;
 }
 
 /* WIDE move warning overlay */
@@ -470,45 +327,6 @@ select:hover { border-color: #8080cc; }
 .ahud-cmds { margin-top: 6px; }
 .ahud-techs { margin-top: 4px; }
 
-/* Animations target .sprite-inner so billboard rotateX on .sprite is preserved */
-.sprite.attacking .sprite-inner {
-  animation: attack-flash 0.15s ease-out;
-}
-.sprite.hurt .sprite-inner {
-  animation: hurt-flash 0.3s ease-out;
-}
-
-@keyframes attack-flash {
-  0%   { transform: scale(1) translateY(0); }
-  50%  { transform: scale(1.2) translateY(-6px); }
-  100% { transform: scale(1) translateY(0); }
-}
-@keyframes hurt-flash {
-  0%   { filter: brightness(1) saturate(1); }
-  25%  { filter: brightness(3) saturate(0) drop-shadow(0 0 10px #fff); }
-  100% { filter: brightness(1) saturate(1); }
-}
-
-/* -------------------------------------------------------
-   Sprite state classes (set by setSpriteState in JS)
-------------------------------------------------------- */
-.sprite.state-winding_up .sprite-inner {
-  animation: windup-pulse 0.4s ease-in-out infinite alternate;
-}
-.sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px #fff);
-}
-.opponent-sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px var(--opp-glow));
-}
-.player-sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px var(--player-glow));
-}
-
-@keyframes windup-pulse {
-  from { transform: scale(1.0); }
-  to   { transform: scale(1.09); }
-}
 
 /* Damage number floaters */
 .dmg-float {
@@ -749,6 +567,5 @@ select:hover { border-color: #8080cc; }
 ------------------------------------------------------- */
 @media (max-height: 600px) {
   .arena { min-height: 120px; }
-  .sprite-inner { font-size: 38px; }
   #battle-log-panel { height: 70px; }
 }
