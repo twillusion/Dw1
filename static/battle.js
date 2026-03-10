@@ -124,11 +124,15 @@ const PROJ_COLORS = {
 // -------------------------------------------------------------------------
 // CSS 3D ground-plane positioning
 // -------------------------------------------------------------------------
-// pos_x: -55 → +55 maps to 0% → 100% left on ground plane
-// pos_z:   0 → 100 maps to 100% → 0% top (near=bottom, far=top)
+// Ground plane is 220% wide, centered; only ~45% of its width maps to the
+// visible arena. Field pos_x ±55 maps to ±7.5% from center (42.5%–57.5%).
+// Ground plane height is 70%; top% is limited to 5%–90% so sprites stay
+// in front of the camera (z_3d < perspective: 500px at all positions).
 function setGroundPos(anchorEl, pos_x, pos_z) {
-  anchorEl.style.left = ((pos_x / 110 + 0.5) * 100) + '%';
-  anchorEl.style.top  = ((1 - pos_z / 100) * 100) + '%';
+  const topPct  = 5 + (1 - pos_z / 100) * 85;   // far(100)→5%,  near(0)→90%
+  const leftPct = 50 + (pos_x / 110) * 15;       // ±55 → ±7.5% from center
+  anchorEl.style.left = leftPct.toFixed(1) + '%';
+  anchorEl.style.top  = topPct.toFixed(1)  + '%';
 }
 
 // -------------------------------------------------------------------------
@@ -164,8 +168,8 @@ function updateProjectileDivs(projectiles) {
       el.projLayer.appendChild(div);
       projDivPool[p.id] = div;
     }
-    div.style.left = ((p.pos_x / 110 + 0.5) * 100) + '%';
-    div.style.top  = ((1 - p.pos_z / 100) * 100) + '%';
+    div.style.left = (50 + (p.pos_x / 110) * 15).toFixed(1) + '%';
+    div.style.top  = (5 + (1 - p.pos_z / 100) * 85).toFixed(1) + '%';
   }
 }
 

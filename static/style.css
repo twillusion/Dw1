@@ -270,7 +270,7 @@ select:hover { border-color: #8080cc; }
 #arena-scene {
   position: absolute;
   inset: 0;
-  perspective: 420px;
+  perspective: 500px;
   perspective-origin: 50% 32%;
   z-index: 1;
 }
@@ -280,11 +280,11 @@ select:hover { border-color: #8080cc; }
   position: absolute;
   top: 32%;
   left: 50%;
-  transform: translateX(-50%) rotateX(68deg);
+  transform: translateX(-50%) rotateX(60deg);
   transform-origin: top center;
   transform-style: preserve-3d;
-  width: 260%;
-  height: 300%;
+  width: 220%;
+  height: 70%;
   background:
     repeating-linear-gradient(
       0deg,
@@ -323,7 +323,7 @@ select:hover { border-color: #8080cc; }
   position: absolute;
   bottom: 0;
   left: 0;
-  transform: translateX(-50%) rotateX(-68deg);
+  transform: translateX(-50%) rotateX(-60deg);
   transform-origin: bottom center;
   transform-style: preserve-3d;
   display: flex;
@@ -358,8 +358,41 @@ select:hover { border-color: #8080cc; }
   width: 14px;
   height: 14px;
   border-radius: 50%;
-  transform: translate(-50%, -50%) rotateX(-68deg);
+  transform: translate(-50%, -50%) rotateX(-60deg);
   transform-origin: center center;
+}
+
+/* Field boundary lines on the ground plane */
+.field-line {
+  position: absolute;
+  pointer-events: none;
+}
+.field-line-left,
+.field-line-right {
+  top: 0; bottom: 0;
+  width: 2px;
+  background: linear-gradient(to bottom,
+    rgba(255,215,50,0) 0%,
+    rgba(255,215,50,0.55) 25%,
+    rgba(255,215,50,0.55) 75%,
+    rgba(255,215,50,0) 100%
+  );
+}
+/* pos_x = -55 → leftPct = 50 + (-55/110)*15 = 42.5% */
+.field-line-left  { left: 42.5%; }
+/* pos_x = +55 → leftPct = 50 + (55/110)*15  = 57.5% */
+.field-line-right { left: 57.5%; }
+/* Back boundary at pos_z = 100 (far end) → top: 5% */
+.field-line-back {
+  left: 42.5%; right: 42.5%;
+  top: 5%;
+  height: 2px;
+  background: linear-gradient(to right,
+    rgba(255,215,50,0) 0%,
+    rgba(255,215,50,0.55) 15%,
+    rgba(255,215,50,0.55) 85%,
+    rgba(255,215,50,0) 100%
+  );
 }
 
 /* WIDE move warning overlay */
