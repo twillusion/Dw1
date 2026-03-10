@@ -33,12 +33,20 @@ pos_z = 100 → opponent side (far, screen top)
 pos_x = 0   → center; ±60 = field edges; boundary lines at ±55
 ```
 
-## CSS 3D Arena — Current Parameters (as of last fix)
+## CSS 3D Arena — Current Parameters
 
-Ground plane in `#arena`:
-- `perspective: 500px`
-- `height: 70%` on the ground plane
-- `rotateX(60deg)`
+`#arena-scene`:
+- `perspective: 700px`
+- `perspective-origin: 50% 15%`  ← horizon near top = elevated/RTS camera feel
+
+`#ground-plane`:
+- `top: 15%`
+- `rotateX(70deg)`
+- `height: 80%`
+
+Counter-rotations (must always equal −rotateX to keep billboards upright):
+- `.sprite`: `rotateX(-70deg)`
+- `.projectile-dot`: `rotateX(-70deg)`
 
 Coordinate mapping in `battle.js → setGroundPos()`:
 ```js
@@ -48,17 +56,18 @@ leftPct = 50 + (pos_x / 110) * 15      // ±55 → ±7.5% from center
 
 Boundary divs: gold vertical lines at `left: 42.5%` and `57.5%`; horizontal back line at `top: 5%`.
 
-### Why these numbers (last crash fix)
+### Safety constraint (do not violate)
 
-Original values (`perspective: 420px`, `height: 300%`, `rotateX(68°)`) caused sprites
-to disappear entirely — the near edge was behind the camera (z_3d > perspective).
+`height_px × sin(rotateX) < perspective` — the near edge of the plane must not cross
+the camera plane or CSS silently clips all geometry.
 
-Fix: pushed camera back (500px), shrank plane (70%), shallowed angle (60°).
-Constraint: `z_3d` of any visible point must stay < `perspective`. At 70% height + 60°
-the near-edge z_3d ≈ 120px — well within 500px.
+Current headroom: `0.80 × arena_h × sin(70°) ≈ 263px < 700px` ✓
 
-**Do not change these three values independently** — they are coupled. If you need to
-adjust the 3D feel, change all three together and verify sprites remain visible.
+**These values are coupled: `perspective`, `top`, `rotateX`, `height`, and both
+counter-rotations must all be changed together.** History: original values
+(`perspective: 420px`, `height: 300%`, `rotateX(68°)`) put the near edge behind the
+camera and caused all sprites to vanish. Then raised to 500px/70%/60° to fix that.
+Current 700px/80%/70° adds RTS-style elevated camera.
 
 ## Game Mechanics (key formulas)
 
