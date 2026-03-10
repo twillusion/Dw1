@@ -6,28 +6,96 @@ thread. Emits structured events via a callback to be forwarded over WebSocket.
 
 Battle flow per tick:
   1. Tick status timers, cooldowns, speed buffers
-  2. Apply damage drain from hpDamageBuffer (visual drain animation)
-  3. Apply poison HP drain
-  4. Check if either fighter can act → choose and execute a technique
-  5. Check for battle end (HP <= 0)
-  6. Emit state snapshot every tick
+  2. Move fighters (approach/retreat AI)
+  3. Move projectiles; check collisions; despawn expired
+  4. Tick delayed-hit timers (WIDE moves)
+  5. Apply damage drain from hpDamageBuffer (visual drain animation)
+  6. Apply poison HP drain
+  7. Check if either fighter can act → choose and execute a technique
+  8. Check for battle end (HP <= 0)
+  9. Emit state snapshot every tick
 """
 
+import math
 import time
 import random
 import threading
+from dataclasses import dataclass, field
 from typing import Callable
 
 from .fighter import Fighter, make_fighter
-from .data import TECHNIQUES, DIGIMON, POISON_DRAIN_PER_SEC
+from .data import (
+    TECHNIQUES, DIGIMON, POISON_DRAIN_PER_SEC,
+    SHORT_RANGE_THRESHOLD, PROJECTILE_SPEED, DODGE_THRESHOLD,
+)
 from .formulas import (
     calc_damage, calc_hit_chance, calc_mp_cost, roll_hit, roll_status,
     confusion_attacks_self, damage_tick, calc_finisher_damage,
 )
 
-TICK_RATE = 30          # ticks per second
+TICK_RATE = 30
 TICK_SLEEP = 1 / TICK_RATE
 
+
+# ---------------------------------------------------------------------------
+# Projectile
+# ---------------------------------------------------------------------------
+
+@dataclass
+class Projectile:
+    """A traveling attack projectile on the 2.5D field."""
+    id: int
+    pos_x: float
+    pos_z: float
+    vel_x: float          # x units per tick
+    vel_z: float          # z units per tick (negative = toward player side)
+    attacker_name: str    # name of the Fighter that fired it
+    defender_name: str
+    tech_name: str
+    damage: int
+    status: str | None
+    status_chance: int
+    dodgeable: bool
+    life: int = 60        # despawn after this many ticks (~2 seconds)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "pos_x": round(self.pos_x, 2),
+            "pos_z": round(self.pos_z, 2),
+            "tech_name": self.tech_name,
+            "dodgeable": self.dodgeable,
+        }
+
+
+# ---------------------------------------------------------------------------
+# DelayedHit (WIDE moves)
+# ---------------------------------------------------------------------------
+
+@dataclass
+class DelayedHit:
+    """A queued WIDE-range attack that lands after a fixed delay."""
+    id: int
+    attacker_name: str
+    defender_name: str
+    tech_name: str
+    damage: int
+    status: str | None
+    status_chance: int
+    ticks_remaining: int
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tech_name": self.tech_name,
+            "ticks_remaining": self.ticks_remaining,
+            "attacker": self.attacker_name,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Battle engine
+# ---------------------------------------------------------------------------
 
 class BattleEngine:
     def __init__(
@@ -40,18 +108,26 @@ class BattleEngine:
         self.opponent: Fighter = make_fighter(opponent_name, is_player=False)
         self.emit = emit_fn
 
+        # Set starting positions: player near camera (z=15), opponent far (z=85)
+        self.player.pos_z = 15.0
+        self.player.pos_x = 0.0
+        self.opponent.pos_z = 85.0
+        self.opponent.pos_x = 0.0
+
         self.tick_count: int = 0
         self.running: bool = False
-        self._thread: threading.Thread | None = None
+        self._next_id: int = 1
 
         self.log: list[dict] = []
         self.battle_over: bool = False
         self.winner: str | None = None
 
+        self.projectiles: list[Projectile] = []
+        self.delayed_hits: list[DelayedHit] = []
+
         # Pending finisher: waiting for player mash input
         self._pending_finisher: dict | None = None
 
-        # Lock for thread-safe state access
         self._lock = threading.Lock()
 
     # -----------------------------------------------------------------------
@@ -60,8 +136,7 @@ class BattleEngine:
 
     def start(self):
         self.running = True
-        self._thread = threading.Thread(target=self._loop, daemon=True)
-        self._thread.start()
+        self._loop()
 
     def stop(self):
         self.running = False
@@ -73,17 +148,12 @@ class BattleEngine:
                 self._log_event("command", f"{self.player.name} switches to {command} mode.")
 
     def set_player_technique(self, technique: str):
-        """For Manual mode: queue a specific technique."""
         with self._lock:
             if technique in self.player.techniques:
                 self.player.command = "Manual"
-                self.player._manual_tech = technique  # temporary attribute
+                self.player._manual_tech = technique
 
     def resolve_finisher(self, mash_score: int):
-        """
-        Called when the player completes the button-mash mini-game.
-        mash_score: 0–100 (number of button presses in the time window)
-        """
         with self._lock:
             if self._pending_finisher:
                 pf = self._pending_finisher
@@ -122,14 +192,24 @@ class BattleEngine:
             f.tick_cooldown()
             f.tick_status_timers()
 
-        # 2. Drain HP from damage buffer (visual drain animation)
+        # 2. Move fighters (approach/retreat + lateral dodge)
+        self._move_fighter(self.player, self.opponent)
+        self._move_fighter(self.opponent, self.player)
+
+        # 3. Move projectiles, check collisions, despawn expired
+        self._tick_projectiles()
+
+        # 4. Tick delayed-hit timers (WIDE moves)
+        self._tick_delayed_hits()
+
+        # 5. Drain HP from damage buffer
         for f in (self.player, self.opponent):
             if f.hp_damage_buffer > 0:
                 f.hp_damage_buffer, f.current_hp = damage_tick(
                     f.hp_damage_buffer, f.current_hp
                 )
 
-        # 3. Poison HP drain (once per second = every TICK_RATE ticks)
+        # 6. Poison HP drain (once per second)
         if t % TICK_RATE == 0:
             for f in (self.player, self.opponent):
                 if f.is_poisoned:
@@ -141,16 +221,16 @@ class BattleEngine:
                         color="#9b59b6",
                     )
 
-        # 4. Check for battle end
+        # 7. Check for battle end
         if self._check_end():
             return
 
-        # 5. Wait if finisher resolution is pending (player must mash)
+        # 8. Wait if finisher resolution pending
         if self._pending_finisher:
             self._emit_state()
             return
 
-        # 6. Let each fighter act if able
+        # 9. Let each fighter act if able
         for attacker, defender in [
             (self.player, self.opponent),
             (self.opponent, self.player),
@@ -158,8 +238,155 @@ class BattleEngine:
             if attacker.can_act:
                 self._execute_action(attacker, defender)
 
-        # 7. Emit state to browser every tick
+        # 10. Emit state
         self._emit_state()
+
+    # -----------------------------------------------------------------------
+    # Spatial movement AI
+    # -----------------------------------------------------------------------
+
+    def _move_fighter(self, f: Fighter, other: Fighter):
+        """
+        Move fighter toward/away from opponent to maintain preferred_distance.
+        Also performs lateral dodge if a dodgeable projectile is incoming.
+        """
+        dist = abs(other.pos_z - f.pos_z)
+        target = f.preferred_distance
+
+        if dist > target + 5:
+            # Move toward opponent along z
+            f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.state = "moving"
+        elif dist < target - 5:
+            # Back off along z
+            f.pos_z -= f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.state = "moving"
+        else:
+            f.state = "idle"
+
+        # Clamp z to field bounds
+        f.pos_z = max(5.0, min(95.0, f.pos_z))
+
+        # Lateral dodge: only for dodgeable projectiles aimed at this fighter
+        for p in self.projectiles:
+            if p.defender_name != f.name or not p.dodgeable:
+                continue
+            # Only react when projectile is within ~25 ticks of arrival
+            dist_z = abs(p.pos_z - f.pos_z)
+            ticks_away = dist_z / max(abs(p.vel_z), 0.1)
+            if ticks_away < 25 and abs(p.pos_x - f.pos_x) < DODGE_THRESHOLD * 1.5:
+                if random.random() < 0.40:  # 40% per tick → not a certainty
+                    direction = 1 if f.pos_x <= 0 else -1
+                    f.pos_x = max(-50.0, min(50.0, f.pos_x + direction * f.move_speed * 1.5))
+
+        # Drift back toward x=0 when not dodging (fighters don't run off forever)
+        if abs(f.pos_x) > 2:
+            f.pos_x -= _sign(f.pos_x) * min(abs(f.pos_x), f.move_speed * 0.5)
+
+    # -----------------------------------------------------------------------
+    # Projectile system
+    # -----------------------------------------------------------------------
+
+    def _tick_projectiles(self):
+        remaining = []
+        for p in self.projectiles:
+            p.pos_x += p.vel_x
+            p.pos_z += p.vel_z
+            p.life -= 1
+
+            defender = self._get_fighter(p.defender_name)
+
+            # Collision check
+            if defender and self._projectile_hits(p, defender):
+                self._apply_projectile_damage(p, defender)
+                continue  # consumed
+
+            # Despawn if expired or past the field
+            if p.life <= 0 or p.pos_z < 0 or p.pos_z > 100:
+                self._log_event(
+                    "projectile_miss",
+                    f"{p.attacker_name}'s {p.tech_name} missed — {p.defender_name} evaded!",
+                    color="#95a5a6",
+                )
+                continue
+
+            remaining.append(p)
+
+        self.projectiles = remaining
+
+    def _projectile_hits(self, p: Projectile, defender: Fighter) -> bool:
+        """
+        For dodgeable projectiles: hit if within DODGE_THRESHOLD x-units AND
+        within 4 z-units (close enough to register collision).
+        For non-dodgeable: hit as soon as z passes defender's z.
+        """
+        dz = abs(p.pos_z - defender.pos_z)
+        if not p.dodgeable:
+            # Non-dodgeable: collision when projectile passes defender's z plane
+            return dz < abs(p.vel_z) * 1.5
+        else:
+            dx = abs(p.pos_x - defender.pos_x)
+            return dz < 4.0 and dx < DODGE_THRESHOLD
+
+    def _apply_projectile_damage(self, p: Projectile, defender: Fighter):
+        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + p.damage)
+        attacker = self._get_fighter(p.attacker_name)
+        if attacker:
+            attacker.hit_count += 1
+            if p.damage > 200:
+                attacker.heavy_hit_count += 1
+            attacker.advance_finisher()
+            if attacker.finisher_ready:
+                self._trigger_finisher(attacker, defender)
+
+        status_msg = ""
+        if p.status and roll_status(p.status_chance):
+            defender.apply_status(p.status)
+            status_msg = f" {defender.name} is {p.status.lower()}ed!"
+
+        self._log_event(
+            "projectile_hit",
+            f"{p.attacker_name}'s {p.tech_name} hits {defender.name} → {p.damage} dmg!{status_msg}",
+            color="#f39c12",
+            damage=p.damage,
+        )
+
+    # -----------------------------------------------------------------------
+    # Delayed-hit system (WIDE moves)
+    # -----------------------------------------------------------------------
+
+    def _tick_delayed_hits(self):
+        remaining = []
+        for dh in self.delayed_hits:
+            dh.ticks_remaining -= 1
+            if dh.ticks_remaining <= 0:
+                defender = self._get_fighter(dh.defender_name)
+                if defender:
+                    self._apply_delayed_damage(dh, defender)
+            else:
+                remaining.append(dh)
+        self.delayed_hits = remaining
+
+    def _apply_delayed_damage(self, dh: DelayedHit, defender: Fighter):
+        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + dh.damage)
+        attacker = self._get_fighter(dh.attacker_name)
+        if attacker:
+            attacker.hit_count += 1
+            attacker.advance_finisher()
+            if attacker.finisher_ready:
+                self._trigger_finisher(attacker, defender)
+
+        status_msg = ""
+        if dh.status and roll_status(dh.status_chance):
+            defender.apply_status(dh.status)
+            status_msg = f" {defender.name} is {dh.status.lower()}ed!"
+
+        self._log_event(
+            "attack",
+            f"{dh.attacker_name}'s {dh.tech_name} lands on {defender.name} → {dh.damage} dmg!{status_msg}",
+            color="#e74c3c",
+            damage=dh.damage,
+        )
 
     # -----------------------------------------------------------------------
     # Action execution
@@ -173,7 +400,6 @@ class BattleEngine:
                 f"{attacker.name} is confused and attacks itself!",
                 color="#e67e22",
             )
-            # Self-damage: use weakest move at half power
             tech_name = min(attacker.techniques, key=lambda t: TECHNIQUES[t]["power"])
             tech = TECHNIQUES[tech_name]
             dmg = calc_damage(
@@ -198,29 +424,136 @@ class BattleEngine:
             tech_name = attacker.choose_technique()
 
         if tech_name is None:
-            # No MP for any move — basic attack (half weakest power, no cost)
             attacker.reset_speed_buffer()
             self._log_event("info", f"{attacker.name} has no MP left to attack!")
             return
 
         tech = TECHNIQUES[tech_name]
+        tech_range = tech["range"]
+
+        # Range check for SHORT moves — must be close enough
+        if tech_range == "SHORT":
+            dist = abs(defender.pos_z - attacker.pos_z)
+            if dist > SHORT_RANGE_THRESHOLD:
+                # Not close enough yet — don't reset speed buffer, keep advancing
+                attacker.state = "moving"
+                return
 
         # Deduct MP
         mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
         if attacker.current_mp < mp_cost:
             attacker.reset_speed_buffer()
             return
-
         attacker.current_mp -= mp_cost
 
-        # Check hit
+        # Statistical hit/miss check (always applies)
         hit_chance = calc_hit_chance(
             attacker_speed=attacker.speed,
             victim_speed=defender.speed,
             move_accuracy=tech["accuracy"],
         )
+
+        attacker.state = "attacking"
+        attacker.reset_speed_buffer()
+
+        type_label = _type_label(tech["type"], defender.def_type)
+
+        # --- WIDE move → queued delayed hit ---
+        if tech_range == "WIDE":
+            if not roll_hit(hit_chance):
+                self._log_event(
+                    "miss",
+                    f"{attacker.name} uses {tech_name}... but it fizzles!",
+                    color="#95a5a6",
+                )
+                return
+
+            dmg = calc_damage(
+                attacker_offense=attacker.effective_offense,
+                defender_defense=defender.effective_defense,
+                move_power=tech["power"],
+                attacker_type=tech["type"],
+                defender_type=defender.def_type,
+                mastery_count=attacker.mastery_counts.get(tech_name, 0),
+                is_enemy=not attacker.is_player,
+            )
+            delay = tech.get("delay_ticks", 45)
+            dh = DelayedHit(
+                id=self._next_id,
+                attacker_name=attacker.name,
+                defender_name=defender.name,
+                tech_name=tech_name,
+                damage=dmg,
+                status=tech["status"],
+                status_chance=tech.get("status_chance", 0),
+                ticks_remaining=delay,
+            )
+            self._next_id += 1
+            self.delayed_hits.append(dh)
+            attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
+
+            self._log_event(
+                "wide_warning",
+                f"⚡ {attacker.name} charges {tech_name}{type_label}! ({delay // TICK_RATE:.1f}s warning)",
+                color="#e74c3c",
+            )
+            return
+
+        # --- LONG move → traveling projectile ---
+        if tech_range == "LONG":
+            if not roll_hit(hit_chance):
+                self._log_event(
+                    "miss",
+                    f"{attacker.name} fires {tech_name}... but it misses!",
+                    color="#95a5a6",
+                )
+                return
+
+            dmg = calc_damage(
+                attacker_offense=attacker.effective_offense,
+                defender_defense=defender.effective_defense,
+                move_power=tech["power"],
+                attacker_type=tech["type"],
+                defender_type=defender.def_type,
+                mastery_count=attacker.mastery_counts.get(tech_name, 0),
+                is_enemy=not attacker.is_player,
+            )
+            attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
+
+            # Velocity toward defender's CURRENT position (not tracking)
+            dx = defender.pos_x - attacker.pos_x
+            dz = defender.pos_z - attacker.pos_z
+            dist_to_target = math.sqrt(dx * dx + dz * dz) or 1.0
+            vel_x = (dx / dist_to_target) * PROJECTILE_SPEED
+            vel_z = (dz / dist_to_target) * PROJECTILE_SPEED
+
+            proj = Projectile(
+                id=self._next_id,
+                pos_x=attacker.pos_x,
+                pos_z=attacker.pos_z,
+                vel_x=vel_x,
+                vel_z=vel_z,
+                attacker_name=attacker.name,
+                defender_name=defender.name,
+                tech_name=tech_name,
+                damage=dmg,
+                status=tech["status"],
+                status_chance=tech.get("status_chance", 0),
+                dodgeable=tech.get("dodgeable", True),
+            )
+            self._next_id += 1
+            self.projectiles.append(proj)
+
+            self._log_event(
+                "attack",
+                f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!",
+                color=attacker.color,
+                damage=dmg,
+            )
+            return
+
+        # --- SHORT move → instant damage ---
         if not roll_hit(hit_chance):
-            attacker.reset_speed_buffer()
             self._log_event(
                 "miss",
                 f"{attacker.name} uses {tech_name}... but misses!",
@@ -228,7 +561,6 @@ class BattleEngine:
             )
             return
 
-        # Calculate and apply damage
         dmg = calc_damage(
             attacker_offense=attacker.effective_offense,
             defender_defense=defender.effective_defense,
@@ -238,72 +570,51 @@ class BattleEngine:
             mastery_count=attacker.mastery_counts.get(tech_name, 0),
             is_enemy=not attacker.is_player,
         )
-
-        # Type effectiveness label
-        type_factor = _type_label(tech["type"], defender.def_type)
-
-        defender.hp_damage_buffer = min(
-            9999, defender.hp_damage_buffer + dmg
-        )
+        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + dmg)
         attacker.hit_count += 1
         if dmg > 200:
             attacker.heavy_hit_count += 1
+        attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
 
-        # Mastery tick
-        attacker.mastery_counts[tech_name] = min(
-            99, attacker.mastery_counts.get(tech_name, 0) + 1
-        )
-
-        # Status effect
         status_msg = ""
-        if tech["status"] and roll_status(tech["status_chance"]):
+        if tech["status"] and roll_status(tech.get("status_chance", 0)):
             defender.apply_status(tech["status"])
             status_msg = f" {defender.name} is {tech['status'].lower()}ed!"
 
         self._log_event(
             "attack",
-            f"{attacker.name} uses {tech_name}{type_factor} → {dmg} dmg!{status_msg}",
+            f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}",
             color=attacker.color,
             damage=dmg,
         )
 
-        # Advance finisher meter
         attacker.advance_finisher()
-
-        # Check if finisher is ready
         if attacker.finisher_ready:
             self._trigger_finisher(attacker, defender)
 
-        attacker.reset_speed_buffer()
+    # -----------------------------------------------------------------------
+    # Finisher
+    # -----------------------------------------------------------------------
 
     def _trigger_finisher(self, attacker: Fighter, defender: Fighter):
-        """Emit finisher event; pause battle until mash resolved."""
         attacker.reset_finisher()
         self._log_event(
             "finisher",
             f"✦ {attacker.name} charges a FINISHING MOVE: {attacker.finisher_name}!",
             color="#f39c12",
         )
-
         if attacker.is_player:
-            # Player must mash — store pending and emit event to browser
-            self._pending_finisher = {
-                "attacker": attacker,
-                "defender": defender,
-            }
+            self._pending_finisher = {"attacker": attacker, "defender": defender}
             self.emit("finisher_ready", {
                 "attacker": attacker.name,
                 "move": attacker.finisher_name,
                 "power": attacker.finisher_power,
             })
         else:
-            # Enemy AI: simulate mash score (60–90)
             mash_score = random.randint(60, 90)
             self._apply_finisher_damage(attacker, defender, mash_score)
 
-    def _apply_finisher_damage(
-        self, attacker: Fighter, defender: Fighter, mash_score: int
-    ):
+    def _apply_finisher_damage(self, attacker: Fighter, defender: Fighter, mash_score: int):
         dmg = calc_finisher_damage(
             move_power=attacker.finisher_power,
             attacker_type=DIGIMON[attacker.name]["def_type"],
@@ -326,7 +637,6 @@ class BattleEngine:
 
     def _check_end(self) -> bool:
         for f, other in [(self.player, self.opponent), (self.opponent, self.player)]:
-            # Battle ends when drain brings HP to 0
             if f.current_hp <= 0 and f.hp_damage_buffer == 0:
                 self.battle_over = True
                 self.running = False
@@ -343,9 +653,14 @@ class BattleEngine:
     # Helpers
     # -----------------------------------------------------------------------
 
-    def _log_event(
-        self, event_type: str, message: str, color: str = "#ecf0f1", damage: int = 0
-    ):
+    def _get_fighter(self, name: str) -> Fighter | None:
+        if self.player.name == name:
+            return self.player
+        if self.opponent.name == name:
+            return self.opponent
+        return None
+
+    def _log_event(self, event_type: str, message: str, color: str = "#ecf0f1", damage: int = 0):
         entry = {
             "tick": self.tick_count,
             "type": event_type,
@@ -363,13 +678,21 @@ class BattleEngine:
             "tick": self.tick_count,
             "player": self.player.to_dict(),
             "opponent": self.opponent.to_dict(),
-            "awaiting_finisher": self._pending_finisher is not None and self.player.finisher_ready
-            if self._pending_finisher else False,
+            "projectiles": [p.to_dict() for p in self.projectiles],
+            "delayed_hits": [dh.to_dict() for dh in self.delayed_hits],
+            "awaiting_finisher": self._pending_finisher is not None,
         })
 
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _sign(x: float) -> float:
+    return 1.0 if x >= 0 else -1.0
+
+
 def _type_label(attack_type: str, defend_type: str) -> str:
-    """Returns a short effectiveness label for the battle log."""
     from .data import get_type_factor
     factor = get_type_factor(attack_type, defend_type)
     if factor >= 20:

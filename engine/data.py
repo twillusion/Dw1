@@ -48,24 +48,31 @@ TYPE_CHART = {
 # ---------------------------------------------------------------------------
 TECHNIQUES = {
     # --- FIRE ---
+    # dodgeable=True  → small/fast projectile, lateral movement can avoid it
+    # dodgeable=False → wide beam / homing; statistical miss only, not physical dodge
+    # delay_ticks     → WIDE moves only: frames of warning before damage lands
     "Pepper Breath": {
         "power": 50, "mp_cost": 18, "range": "LONG",
         "type": FIRE, "status": None, "accuracy": 90, "status_chance": 0,
+        "dodgeable": True,
         "description": "A weak fireball. Agumon's signature move."
     },
     "Pyro Sphere": {
         "power": 110, "mp_cost": 42, "range": "LONG",
         "type": FIRE, "status": None, "accuracy": 85, "status_chance": 0,
+        "dodgeable": True,
         "description": "A larger fireball with more stopping power."
     },
     "Nova Blast": {
         "power": 160, "mp_cost": 66, "range": "WIDE",
         "type": FIRE, "status": None, "accuracy": 80, "status_chance": 0,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "Greymon's powerful wave of flames."
     },
     "Prominence Beam": {
         "power": 220, "mp_cost": 90, "range": "LONG",
         "type": FIRE, "status": None, "accuracy": 75, "status_chance": 0,
+        "dodgeable": False,   # sustained beam, must block not dodge
         "description": "A concentrated beam of intense fire."
     },
 
@@ -73,21 +80,25 @@ TECHNIQUES = {
     "Sonic Jab": {
         "power": 30, "mp_cost": 18, "range": "SHORT",
         "type": BATTLE, "status": None, "accuracy": 95, "status_chance": 0,
+        "dodgeable": False,
         "description": "Rapid-fire punches at close range."
     },
     "Megaton Punch": {
         "power": 85, "mp_cost": 30, "range": "SHORT",
         "type": BATTLE, "status": None, "accuracy": 90, "status_chance": 0,
+        "dodgeable": False,
         "description": "A heavy punch that launches the foe."
     },
     "Thunder Claw": {
         "power": 130, "mp_cost": 48, "range": "SHORT",
         "type": BATTLE, "status": None, "accuracy": 85, "status_chance": 0,
+        "dodgeable": False,
         "description": "Crackling claws strike with lightning speed."
     },
     "Hyper Knuckle": {
         "power": 190, "mp_cost": 72, "range": "SHORT",
         "type": BATTLE, "status": None, "accuracy": 80, "status_chance": 0,
+        "dodgeable": False,
         "description": "Devastating close-range strike."
     },
 
@@ -95,16 +106,19 @@ TECHNIQUES = {
     "Spinning Shot": {
         "power": 55, "mp_cost": 18, "range": "LONG",
         "type": AIR, "status": None, "accuracy": 90, "status_chance": 0,
+        "dodgeable": True,    # small feathers, can sidestep
         "description": "Feathers fired in a spinning pattern."
     },
     "Wing Blade": {
         "power": 100, "mp_cost": 36, "range": "LONG",
         "type": AIR, "status": None, "accuracy": 85, "status_chance": 0,
+        "dodgeable": True,
         "description": "A razor-sharp gust of wind."
     },
     "Storm of Silence": {
         "power": 140, "mp_cost": 66, "range": "WIDE",
         "type": AIR, "status": "CONFUSION", "accuracy": 80, "status_chance": 40,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "A howling storm that may confuse enemies."
     },
 
@@ -112,16 +126,19 @@ TECHNIQUES = {
     "Danger Sting": {
         "power": 60, "mp_cost": 24, "range": "SHORT",
         "type": EARTH, "status": "POISON", "accuracy": 90, "status_chance": 35,
+        "dodgeable": False,
         "description": "A venomous strike that may poison."
     },
     "Earth Shaker": {
         "power": 110, "mp_cost": 48, "range": "WIDE",
         "type": EARTH, "status": None, "accuracy": 78, "status_chance": 0,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "Triggers a ground-shaking tremor."
     },
     "Terra Force": {
         "power": 350, "mp_cost": 120, "range": "WIDE",
         "type": EARTH, "status": None, "accuracy": 65, "status_chance": 0,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "WarGreymon's ultimate technique. Immense power."
     },
 
@@ -129,16 +146,19 @@ TECHNIQUES = {
     "Blizzard": {
         "power": 85, "mp_cost": 30, "range": "LONG",
         "type": ICE, "status": None, "accuracy": 85, "status_chance": 0,
+        "dodgeable": False,   # wide icy blast, can't sidestep
         "description": "A sharp blizzard of icy wind."
     },
     "Subzero Ice Punch": {
         "power": 140, "mp_cost": 54, "range": "SHORT",
         "type": ICE, "status": "PARALYSIS", "accuracy": 82, "status_chance": 30,
+        "dodgeable": False,
         "description": "A freezing punch that may paralyse."
     },
     "Ice Needle": {
         "power": 60, "mp_cost": 24, "range": "LONG",
         "type": ICE, "status": None, "accuracy": 88, "status_chance": 0,
+        "dodgeable": True,    # thin ice spikes, can sidestep
         "description": "Sharp spikes of ice launched at speed."
     },
 
@@ -146,16 +166,19 @@ TECHNIQUES = {
     "Mega Claw": {
         "power": 120, "mp_cost": 42, "range": "SHORT",
         "type": MECH, "status": None, "accuracy": 88, "status_chance": 0,
+        "dodgeable": False,
         "description": "Steel claws tear through armour."
     },
     "Giga Blaster": {
         "power": 210, "mp_cost": 78, "range": "LONG",
         "type": MECH, "status": None, "accuracy": 72, "status_chance": 0,
+        "dodgeable": False,   # arm cannon beam, unavoidable
         "description": "MetalGreymon's arm cannon fires at full power."
     },
     "Genocide Attack": {
         "power": 310, "mp_cost": 108, "range": "WIDE",
         "type": MECH, "status": None, "accuracy": 65, "status_chance": 0,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "A devastating barrage of missiles."
     },
 
@@ -163,11 +186,13 @@ TECHNIQUES = {
     "Odor Spray": {
         "power": 40, "mp_cost": 18, "range": "WIDE",
         "type": FILTH, "status": "STUN", "accuracy": 88, "status_chance": 45,
+        "dodgeable": False, "delay_ticks": 45,
         "description": "A foul cloud that may briefly stun."
     },
     "Poison Claw": {
         "power": 70, "mp_cost": 30, "range": "SHORT",
         "type": FILTH, "status": "POISON", "accuracy": 85, "status_chance": 40,
+        "dodgeable": False,
         "description": "Toxic claws that seep venom."
     },
 }
@@ -334,3 +359,27 @@ def get_type_factor(attacker_type: str, defender_type: str) -> int:
     """Returns the type effectiveness factor (2/5/10/15/20)."""
     defender_idx = ALL_TYPES.index(defender_type)
     return TYPE_CHART[attacker_type][defender_idx]
+
+
+# ---------------------------------------------------------------------------
+# Spatial / movement constants
+# ---------------------------------------------------------------------------
+
+# Distance (field units) within which SHORT range attacks can land
+SHORT_RANGE_THRESHOLD = 25
+
+# Fixed movement speed for all Digimon (units per tick at 30 ticks/sec)
+# Can be individualised per Digimon in a future iteration
+MOVE_SPEED = 1.2
+
+# Preferred standoff distances (field units)
+PREFERRED_DIST_MELEE  = 18   # all SHORT range → close in
+PREFERRED_DIST_RANGED = 45   # all LONG range  → maintain distance
+PREFERRED_DIST_MIXED  = 32   # mixed moveset   → medium range
+
+# Projectile travel speed (field units per tick)
+PROJECTILE_SPEED = 2.5
+
+# Collision radius: projectile hits if it gets within this many x-units of the
+# defender. Intentionally lenient so ranged attacks land most of the time.
+DODGE_THRESHOLD = 14

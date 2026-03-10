@@ -6,7 +6,10 @@ Key offsets documented inline.
 """
 
 from dataclasses import dataclass, field
-from .data import DIGIMON, TECHNIQUES, STATUS_DURATIONS, get_available_commands
+from .data import (
+    DIGIMON, TECHNIQUES, STATUS_DURATIONS, get_available_commands,
+    MOVE_SPEED, PREFERRED_DIST_MELEE, PREFERRED_DIST_RANGED, PREFERRED_DIST_MIXED,
+)
 from .formulas import speed_buffer_increment, finisher_goal, finisher_increment, SPEED_BUFFER_MAX
 
 
@@ -62,6 +65,17 @@ class Fighter:
     is_sick: bool = field(default=False, init=False)
     is_injured: bool = field(default=False, init=False)
 
+    # -----------------------------------------------------------------------
+    # Spatial state (2.5D arena)
+    # pos_z=0 → player side (near camera); pos_z=100 → opponent side (far)
+    # pos_x=0 → centre; range -60 to +60 (lateral)
+    # -----------------------------------------------------------------------
+    pos_x: float = field(default=0.0, init=False)
+    pos_z: float = field(default=0.0, init=False)
+    move_speed: float = field(default=MOVE_SPEED, init=False)
+    preferred_distance: int = field(default=35, init=False)
+    state: str = field(default="idle", init=False)  # idle|moving|attacking|hurt
+
     # Techniques available
     techniques: list = field(default_factory=list)
     finisher_name: str = ""
@@ -86,6 +100,21 @@ class Fighter:
         self.starting_hp = self.max_hp
         for tech in self.techniques:
             self.mastery_counts[tech] = 0
+        self.preferred_distance = self._calc_preferred_distance()
+
+    def _calc_preferred_distance(self) -> int:
+        """
+        Derive preferred combat distance from technique roster.
+        Melee brawlers (all SHORT) → close in tight.
+        Ranged fighters (all LONG)  → maintain standoff.
+        Mixed moveset               → medium range.
+        """
+        ranges = {TECHNIQUES[t]["range"] for t in self.techniques if t in TECHNIQUES}
+        if ranges == {"SHORT"}:
+            return PREFERRED_DIST_MELEE
+        if "LONG" in ranges and "SHORT" not in ranges:
+            return PREFERRED_DIST_RANGED
+        return PREFERRED_DIST_MIXED
 
     # -----------------------------------------------------------------------
     # Properties
@@ -282,6 +311,11 @@ class Fighter:
             "defense": self.defense,
             "speed": self.speed,
             "brains": self.brains,
+            # Spatial state
+            "pos_x": round(self.pos_x, 2),
+            "pos_z": round(self.pos_z, 2),
+            "state": self.state,
+            "preferred_distance": self.preferred_distance,
         }
 
 
