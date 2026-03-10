@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Digimon World — Battle Simulator</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<!-- =====================================================================
+     SELECTION SCREEN
+====================================================================== -->
+<div id="selection-screen" class="screen active">
+  <div class="title-block">
+    <h1 class="title">DIGIMON WORLD</h1>
+    <p class="subtitle">Battle Simulator — v1.0</p>
+    <p class="note">Real-time engine reverse-engineered from PS1 source (SydMontague/DW1-Code)</p>
+  </div>
+
+  <div class="selector-row">
+    <!-- Player -->
+    <div class="selector-card player-card">
+      <h2>YOUR DIGIMON</h2>
+      <select id="player-select"></select>
+      <div id="player-preview" class="digimon-preview"></div>
+    </div>
+
+    <div class="vs-block">VS</div>
+
+    <!-- Opponent -->
+    <div class="selector-card opponent-card">
+      <h2>OPPONENT</h2>
+      <select id="opponent-select"></select>
+      <div id="opponent-preview" class="digimon-preview"></div>
+    </div>
+  </div>
+
+  <button id="start-btn" class="big-btn">▶ START BATTLE</button>
+  <p id="select-error" class="error-msg"></p>
+</div>
+
+<!-- =====================================================================
+     BATTLE SCREEN
+====================================================================== -->
+<div id="battle-screen" class="screen">
+
+  <!-- Top area: Opponent -->
+  <div class="fighter-hud opponent-hud">
+    <div class="fighter-name-row">
+      <span id="opp-emoji" class="fighter-emoji">?</span>
+      <span id="opp-name" class="fighter-name">Opponent</span>
+      <span id="opp-stage" class="fighter-stage"></span>
+      <span id="opp-statuses" class="status-badges"></span>
+    </div>
+    <div class="bars-block">
+      <div class="bar-row">
+        <label>HP</label>
+        <div class="bar-track">
+          <div id="opp-hp-bar" class="bar hp-bar" style="width:100%"></div>
+          <span id="opp-hp-text" class="bar-text">— / —</span>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>MP</label>
+        <div class="bar-track">
+          <div id="opp-mp-bar" class="bar mp-bar" style="width:100%"></div>
+          <span id="opp-mp-text" class="bar-text">— / —</span>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>SPD</label>
+        <div class="bar-track">
+          <div id="opp-spd-bar" class="bar spd-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>FIN</label>
+        <div class="bar-track">
+          <div id="opp-fin-bar" class="bar fin-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Arena sprites -->
+  <div class="arena">
+    <div id="opp-sprite" class="sprite opponent-sprite"></div>
+    <div class="arena-ground"></div>
+    <div id="player-sprite" class="sprite player-sprite"></div>
+  </div>
+
+  <!-- Bottom area: Player -->
+  <div class="fighter-hud player-hud">
+    <div class="fighter-name-row">
+      <span id="pl-emoji" class="fighter-emoji">?</span>
+      <span id="pl-name" class="fighter-name">Player</span>
+      <span id="pl-stage" class="fighter-stage"></span>
+      <span id="pl-statuses" class="status-badges"></span>
+    </div>
+    <div class="bars-block">
+      <div class="bar-row">
+        <label>HP</label>
+        <div class="bar-track">
+          <div id="pl-hp-bar" class="bar hp-bar" style="width:100%"></div>
+          <span id="pl-hp-text" class="bar-text">— / —</span>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>MP</label>
+        <div class="bar-track">
+          <div id="pl-mp-bar" class="bar mp-bar" style="width:100%"></div>
+          <span id="pl-mp-text" class="bar-text">— / —</span>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>SPD</label>
+        <div class="bar-track">
+          <div id="pl-spd-bar" class="bar spd-bar" style="width:0%"></div>
+        </div>
+      </div>
+      <div class="bar-row">
+        <label>FIN</label>
+        <div class="bar-track">
+          <div id="pl-fin-bar" class="bar fin-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Command panel -->
+  <div id="command-panel">
+    <div id="command-buttons" class="command-buttons"></div>
+    <div id="technique-buttons" class="technique-buttons" style="display:none"></div>
+  </div>
+
+  <!-- Battle log -->
+  <div id="battle-log-panel">
+    <div id="battle-log"></div>
+  </div>
+
+  <!-- Back button -->
+  <button id="back-btn" class="back-btn">◀ Back to Selection</button>
+</div>
+
+<!-- =====================================================================
+     FINISHER OVERLAY
+====================================================================== -->
+<div id="finisher-overlay" class="overlay" style="display:none">
+  <div class="finisher-box">
+    <div class="finisher-title">✦ FINISHING MOVE! ✦</div>
+    <div id="finisher-move-name" class="finisher-move-name">—</div>
+    <div class="finisher-instructions">MASH THE BUTTON AS FAST AS YOU CAN!</div>
+    <div class="finisher-progress-track">
+      <div id="finisher-mash-bar" class="finisher-mash-bar" style="width:0%"></div>
+    </div>
+    <div id="finisher-timer" class="finisher-timer">3</div>
+    <button id="mash-btn" class="mash-btn">MASH!</button>
+  </div>
+</div>
+
+<!-- =====================================================================
+     BATTLE END OVERLAY
+====================================================================== -->
+<div id="end-overlay" class="overlay" style="display:none">
+  <div class="end-box">
+    <div id="end-title" class="end-title">—</div>
+    <div id="end-subtitle" class="end-subtitle"></div>
+    <button id="rematch-btn" class="big-btn">▶ REMATCH</button>
+    <button id="end-back-btn" class="big-btn secondary-btn">◀ Change Digimon</button>
+  </div>
+</div>
+
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<script src="battle.js"></script>
+</body>
+</html>
