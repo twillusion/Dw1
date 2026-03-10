@@ -45,101 +45,121 @@
 ====================================================================== -->
 <div id="battle-screen" class="screen">
 
-  <!-- Top area: Opponent -->
-  <div class="fighter-hud opponent-hud">
-    <div class="fighter-name-row">
-      <span id="opp-emoji" class="fighter-emoji">?</span>
-      <span id="opp-name" class="fighter-name">Opponent</span>
-      <span id="opp-stage" class="fighter-stage"></span>
-      <span id="opp-statuses" class="status-badges"></span>
-    </div>
-    <div class="bars-block">
-      <div class="bar-row">
-        <label>HP</label>
-        <div class="bar-track">
-          <div id="opp-hp-bar" class="bar hp-bar" style="width:100%"></div>
-          <span id="opp-hp-text" class="bar-text">— / —</span>
-        </div>
-      </div>
-      <div class="bar-row">
-        <label>MP</label>
-        <div class="bar-track">
-          <div id="opp-mp-bar" class="bar mp-bar" style="width:100%"></div>
-          <span id="opp-mp-text" class="bar-text">— / —</span>
-        </div>
-      </div>
-      <div class="bar-row">
-        <label>SPD</label>
-        <div class="bar-track">
-          <div id="opp-spd-bar" class="bar spd-bar" style="width:0%"></div>
-        </div>
-      </div>
-      <div class="bar-row">
-        <label>FIN</label>
-        <div class="bar-track">
-          <div id="opp-fin-bar" class="bar fin-bar" style="width:0%"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Arena sprites -->
+  <!-- Arena — now full height, HUDs live inside -->
   <div class="arena" id="arena">
-    <canvas id="ground-canvas"></canvas>
-    <canvas id="projectile-canvas"></canvas>
-    <div id="opp-sprite" class="sprite opponent-sprite">
-      <span class="sprite-inner" id="opp-sprite-emoji"></span>
-    </div>
-    <div id="player-sprite" class="sprite player-sprite">
-      <span class="sprite-inner" id="pl-sprite-emoji"></span>
-    </div>
-  </div>
 
-  <!-- Bottom area: Player -->
-  <div class="fighter-hud player-hud">
-    <div class="fighter-name-row">
-      <span id="pl-emoji" class="fighter-emoji">?</span>
-      <span id="pl-name" class="fighter-name">Player</span>
-      <span id="pl-stage" class="fighter-stage"></span>
-      <span id="pl-statuses" class="status-badges"></span>
-    </div>
-    <div class="bars-block">
-      <div class="bar-row">
-        <label>HP</label>
-        <div class="bar-track">
-          <div id="pl-hp-bar" class="bar hp-bar" style="width:100%"></div>
-          <span id="pl-hp-text" class="bar-text">— / —</span>
+    <!-- Sky art layer -->
+    <div id="arena-sky"></div>
+
+    <!-- CSS 3D scene: perspective container → rotated ground plane -->
+    <div id="arena-scene">
+      <div id="ground-plane">
+        <!-- Projectile CSS divs -->
+        <div id="proj-layer"></div>
+
+        <!-- Opponent sprite anchor (positioned on ground plane) -->
+        <div id="opp-anchor" class="sprite-anchor">
+          <div class="sprite-shadow"></div>
+          <div id="opp-sprite" class="sprite opponent-sprite">
+            <span class="sprite-inner" id="opp-sprite-emoji"></span>
+          </div>
         </div>
-      </div>
-      <div class="bar-row">
-        <label>MP</label>
-        <div class="bar-track">
-          <div id="pl-mp-bar" class="bar mp-bar" style="width:100%"></div>
-          <span id="pl-mp-text" class="bar-text">— / —</span>
-        </div>
-      </div>
-      <div class="bar-row">
-        <label>SPD</label>
-        <div class="bar-track">
-          <div id="pl-spd-bar" class="bar spd-bar" style="width:0%"></div>
-        </div>
-      </div>
-      <div class="bar-row">
-        <label>FIN</label>
-        <div class="bar-track">
-          <div id="pl-fin-bar" class="bar fin-bar" style="width:0%"></div>
+
+        <!-- Player sprite anchor -->
+        <div id="pl-anchor" class="sprite-anchor">
+          <div class="sprite-shadow"></div>
+          <div id="player-sprite" class="sprite player-sprite">
+            <span class="sprite-inner" id="pl-sprite-emoji"></span>
+          </div>
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Command panel -->
-  <div id="command-panel">
-    <div id="command-buttons" class="command-buttons"></div>
-    <div id="technique-buttons" class="technique-buttons" style="display:none"></div>
-  </div>
+    <!-- WIDE move pulsing warning overlay -->
+    <div id="wide-warning-overlay"></div>
 
-  <!-- Battle log -->
+    <!-- Compact opponent HUD — top-right of arena -->
+    <div id="opp-hud" class="arena-hud arena-hud-opp">
+      <div class="ahud-name-row">
+        <span id="opp-emoji" class="ahud-emoji">?</span>
+        <span id="opp-name" class="ahud-name">Opponent</span>
+        <span id="opp-stage" class="ahud-stage"></span>
+        <span id="opp-statuses" class="status-badges"></span>
+      </div>
+      <div class="ahud-bars">
+        <div class="ahud-bar-row">
+          <label>HP</label>
+          <div class="bar-track">
+            <div id="opp-hp-bar" class="bar hp-bar" style="width:100%"></div>
+            <span id="opp-hp-text" class="bar-text">—/—</span>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>MP</label>
+          <div class="bar-track">
+            <div id="opp-mp-bar" class="bar mp-bar" style="width:100%"></div>
+            <span id="opp-mp-text" class="bar-text">—/—</span>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>SPD</label>
+          <div class="bar-track">
+            <div id="opp-spd-bar" class="bar spd-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>FIN</label>
+          <div class="bar-track">
+            <div id="opp-fin-bar" class="bar fin-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Compact player HUD — bottom-left of arena, includes command buttons -->
+    <div id="pl-hud" class="arena-hud arena-hud-pl">
+      <div class="ahud-name-row">
+        <span id="pl-emoji" class="ahud-emoji">?</span>
+        <span id="pl-name" class="ahud-name">Player</span>
+        <span id="pl-stage" class="ahud-stage"></span>
+        <span id="pl-statuses" class="status-badges"></span>
+      </div>
+      <div class="ahud-bars">
+        <div class="ahud-bar-row">
+          <label>HP</label>
+          <div class="bar-track">
+            <div id="pl-hp-bar" class="bar hp-bar" style="width:100%"></div>
+            <span id="pl-hp-text" class="bar-text">—/—</span>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>MP</label>
+          <div class="bar-track">
+            <div id="pl-mp-bar" class="bar mp-bar" style="width:100%"></div>
+            <span id="pl-mp-text" class="bar-text">—/—</span>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>SPD</label>
+          <div class="bar-track">
+            <div id="pl-spd-bar" class="bar spd-bar" style="width:0%"></div>
+          </div>
+        </div>
+        <div class="ahud-bar-row">
+          <label>FIN</label>
+          <div class="bar-track">
+            <div id="pl-fin-bar" class="bar fin-bar" style="width:0%"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Command and technique buttons now live inside the player HUD -->
+      <div id="command-buttons" class="command-buttons ahud-cmds"></div>
+      <div id="technique-buttons" class="technique-buttons ahud-techs" style="display:none"></div>
+    </div>
+
+  </div><!-- /#arena -->
+
+  <!-- Battle log (only section below arena) -->
   <div id="battle-log-panel">
     <div id="battle-log"></div>
   </div>

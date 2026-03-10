@@ -88,8 +88,10 @@ const el = {
   plSpriteEmoji:  document.getElementById('pl-sprite-emoji'),
 
   arena:            document.getElementById('arena'),
-  groundCanvas:     document.getElementById('ground-canvas'),
-  projectileCanvas: document.getElementById('projectile-canvas'),
+  plAnchor:         document.getElementById('pl-anchor'),
+  oppAnchor:        document.getElementById('opp-anchor'),
+  projLayer:        document.getElementById('proj-layer'),
+  wideWarning:      document.getElementById('wide-warning-overlay'),
 
   commandButtons:   document.getElementById('command-buttons'),
   techniqueButtons: document.getElementById('technique-buttons'),
@@ -106,98 +108,8 @@ const el = {
   endSubtitle: document.getElementById('end-subtitle'),
 };
 
-// Canvas contexts
-let groundCtx = null;
-let projCtx   = null;
-
 // -------------------------------------------------------------------------
-// Perspective field → screen coordinate mapping
-// -------------------------------------------------------------------------
-// The arena is a plain div. We map field coordinates to absolute pixel
-// positions inside it, creating the illusion of a 3D perspective view.
-//
-// pos_z=0   → bottom of arena (near camera)  → screenY = arenaH * 0.88
-// pos_z=100 → top of arena   (far, horizon)  → screenY = arenaH * 0.15
-// Scale shrinks linearly with z (objects far away appear smaller).
-
-function fieldToScreen(pos_x, pos_z) {
-  const arenaRect = el.arena.getBoundingClientRect();
-  const W = arenaRect.width  || el.arena.offsetWidth  || 400;
-  const H = arenaRect.height || el.arena.offsetHeight || 180;
-
-  const t = pos_z / 100;             // 0 (near) → 1 (far)
-  const screenX = W * (0.5 + pos_x / 140);
-  const screenY = H * (0.88 - t * 0.73);  // near at 88%, far at 15%
-
-  // Perspective scale: 1.0 at bottom, 0.45 at horizon
-  const scale = 1.0 - t * 0.55;
-
-  return { x: screenX, y: screenY, scale };
-}
-
-// -------------------------------------------------------------------------
-// Ground grid (perspective)
-// Drawn once; redrawn on window resize.
-// -------------------------------------------------------------------------
-function drawGroundGrid() {
-  const canvas = el.groundCanvas;
-  const W = canvas.width  = canvas.offsetWidth;
-  const H = canvas.height = canvas.offsetHeight;
-  const ctx = groundCtx;
-  ctx.clearRect(0, 0, W, H);
-
-  // Vanishing point at top-centre
-  const vx = W / 2;
-  const vy = H * 0.15;
-
-  // Horizon line y (far edge of field)
-  const horizonY = H * 0.15;
-  // Near edge y
-  const nearY = H * 0.90;
-
-  // Number of lateral and depth grid lines
-  const lateralLines = 9;   // vertical lines converging to VP
-  const depthLines   = 7;   // horizontal lines across the field
-
-  ctx.strokeStyle = '#1e1e30';
-  ctx.lineWidth = 1;
-
-  // Lateral lines (converge at vanishing point)
-  for (let i = 0; i <= lateralLines; i++) {
-    const t = i / lateralLines;
-    const nearX = W * t;
-    ctx.beginPath();
-    ctx.moveTo(vx, vy);
-    ctx.lineTo(nearX, nearY);
-    ctx.stroke();
-  }
-
-  // Depth lines (horizontal, spaced with perspective)
-  for (let i = 0; i <= depthLines; i++) {
-    const t = i / depthLines;
-    // Perspective-correct y position
-    const y = horizonY + (nearY - horizonY) * (t * t * 0.6 + t * 0.4);
-    // Width at this depth
-    const widthRatio = 0.05 + t * 0.95;
-    const x0 = vx - (W / 2) * widthRatio;
-    const x1 = vx + (W / 2) * widthRatio;
-    ctx.beginPath();
-    ctx.moveTo(x0, y);
-    ctx.lineTo(x1, y);
-    ctx.stroke();
-  }
-
-  // Subtle glow at horizon
-  const grad = ctx.createLinearGradient(0, horizonY - 4, 0, horizonY + 4);
-  grad.addColorStop(0, 'transparent');
-  grad.addColorStop(0.5, '#2a2a5544');
-  grad.addColorStop(1, 'transparent');
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, horizonY - 4, W, 8);
-}
-
-// -------------------------------------------------------------------------
-// Projectile canvas rendering
+// Projectile type colours
 // -------------------------------------------------------------------------
 const PROJ_COLORS = {
   FIRE:   '#e74c3c',
@@ -209,62 +121,66 @@ const PROJ_COLORS = {
   FILTH:  '#a29bfe',
 };
 
-function drawProjectiles() {
-  const canvas = el.projectileCanvas;
-  const W = canvas.width  = canvas.offsetWidth;
-  const H = canvas.height = canvas.offsetHeight;
-  const ctx = projCtx;
-  ctx.clearRect(0, 0, W, H);
+// -------------------------------------------------------------------------
+// CSS 3D ground-plane positioning
+// -------------------------------------------------------------------------
+// pos_x: -55 → +55 maps to 0% → 100% left on ground plane
+// pos_z:   0 → 100 maps to 100% → 0% top (near=bottom, far=top)
+function setGroundPos(anchorEl, pos_x, pos_z) {
+  anchorEl.style.left = ((pos_x / 110 + 0.5) * 100) + '%';
+  anchorEl.style.top  = ((1 - pos_z / 100) * 100) + '%';
+}
 
-  for (const p of lastProjectiles) {
-    const { x, y, scale } = fieldToScreen(p.pos_x, p.pos_z);
-    const radius = Math.max(4, 9 * scale);
+// -------------------------------------------------------------------------
+// Projectile div pool
+// -------------------------------------------------------------------------
+const projDivPool = {};  // id → wrapper div
 
-    // Determine color from technique type if available
-    const tech = digimonData.__techs && digimonData.__techs[p.tech_name];
-    const col = tech ? (PROJ_COLORS[tech.type] || '#fff') : '#f39c12';
+function updateProjectileDivs(projectiles) {
+  const alive = new Set(projectiles.map(p => p.id));
 
-    // Glow
-    const grd = ctx.createRadialGradient(x, y, 0, x, y, radius * 2.5);
-    grd.addColorStop(0, col + 'cc');
-    grd.addColorStop(1, col + '00');
-    ctx.fillStyle = grd;
-    ctx.beginPath();
-    ctx.arc(x, y, radius * 2.5, 0, Math.PI * 2);
-    ctx.fill();
-
-    // Core
-    ctx.fillStyle = col;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
+  // Remove stale divs
+  for (const [id, div] of Object.entries(projDivPool)) {
+    if (!alive.has(+id)) {
+      div.remove();
+      delete projDivPool[id];
+    }
   }
 
-  // WIDE move warning: pulsing ring at defender position
-  for (const dh of lastDelayedHits) {
-    // Warn at centre of arena since WIDE hits everywhere
-    const { x, y } = fieldToScreen(0, 50);
-    const alpha = 0.3 + 0.3 * Math.sin(Date.now() / 150);
-    const maxR = Math.min(W, H) * 0.4;
-    const grd = ctx.createRadialGradient(x, y, 0, x, y, maxR);
-    grd.addColorStop(0, `rgba(231,76,60,0)`);
-    grd.addColorStop(0.6, `rgba(231,76,60,${alpha * 0.3})`);
-    grd.addColorStop(1, `rgba(231,76,60,0)`);
-    ctx.fillStyle = grd;
-    ctx.fillRect(0, 0, W, H);
-
-    // Countdown text
-    const secsLeft = (dh.ticks_remaining / 30).toFixed(1);
-    ctx.font = 'bold 11px "Courier New"';
-    ctx.fillStyle = `rgba(231,76,60,${0.6 + alpha})`;
-    ctx.textAlign = 'center';
-    ctx.fillText(`${dh.tech_name} in ${secsLeft}s`, x, y - 20);
+  // Create / update
+  const techs = digimonData.__techs || {};
+  for (const p of projectiles) {
+    let div = projDivPool[p.id];
+    if (!div) {
+      div = document.createElement('div');
+      div.className = 'projectile';
+      const dot = document.createElement('div');
+      dot.className = 'projectile-dot';
+      const tech = techs[p.tech_name];
+      const col = tech ? (PROJ_COLORS[tech.type] || '#f39c12') : '#f39c12';
+      dot.style.background = col;
+      dot.style.boxShadow  = `0 0 8px 3px ${col}88`;
+      div.appendChild(dot);
+      el.projLayer.appendChild(div);
+      projDivPool[p.id] = div;
+    }
+    div.style.left = ((p.pos_x / 110 + 0.5) * 100) + '%';
+    div.style.top  = ((1 - p.pos_z / 100) * 100) + '%';
   }
 }
 
-// Continuously re-render projectile canvas (for smooth animation)
+// -------------------------------------------------------------------------
+// Render loop — no canvas, just update CSS positions + WIDE overlay
+// -------------------------------------------------------------------------
 function renderLoop() {
-  if (battleActive) drawProjectiles();
+  if (battleActive) {
+    updateProjectileDivs(lastProjectiles);
+    if (lastDelayedHits.length > 0) {
+      el.wideWarning.classList.add('active');
+    } else {
+      el.wideWarning.classList.remove('active');
+    }
+  }
   requestAnimationFrame(renderLoop);
 }
 
@@ -281,14 +197,6 @@ async function init() {
 
   buildSelectors();
   bindEvents();
-
-  groundCtx = el.groundCanvas.getContext('2d');
-  projCtx   = el.projectileCanvas.getContext('2d');
-
-  window.addEventListener('resize', () => {
-    if (battleActive) drawGroundGrid();
-  });
-
   showScreen('selection');
   requestAnimationFrame(renderLoop);
 }
@@ -366,11 +274,6 @@ function startBattle() {
   showScreen('battle');
   battleActive = true;
 
-  // Draw ground grid once arena is visible
-  requestAnimationFrame(() => {
-    drawGroundGrid();
-  });
-
   socket.emit('start_battle', { player: playerChoice, opponent: opponentChoice });
 }
 
@@ -379,7 +282,7 @@ function goToSelection() {
   battleActive = false;
   hideFinisherOverlay();
   el.endOverlay.style.display = 'none';
-  el.arena.classList.remove('wide-warning');
+  el.wideWarning.classList.remove('active');
   showScreen('selection');
 }
 
@@ -389,7 +292,6 @@ function rematch() {
   lastProjectiles = [];
   lastDelayedHits = [];
   battleActive = true;
-  drawGroundGrid();
   socket.emit('start_battle', { player: playerChoice, opponent: opponentChoice });
 }
 
@@ -401,10 +303,9 @@ socket.on('disconnect', () => console.log('[WS] Disconnected'));
 
 socket.on('battle_started', data => {
   initHUD(data.player, data.opponent);
-  // Place sprites at their starting positions before the first tick arrives
   requestAnimationFrame(() => {
-    positionSprite(el.plSprite,  data.player.pos_x,   data.player.pos_z);
-    positionSprite(el.oppSprite, data.opponent.pos_x, data.opponent.pos_z);
+    setGroundPos(el.plAnchor,  data.player.pos_x,   data.player.pos_z);
+    setGroundPos(el.oppAnchor, data.opponent.pos_x, data.opponent.pos_z);
   });
 });
 
@@ -414,13 +315,6 @@ socket.on('battle_state', data => {
   updateSpritePositions(data.player, data.opponent);
   lastProjectiles = data.projectiles || [];
   lastDelayedHits = data.delayed_hits || [];
-
-  // WIDE warning visual
-  if (lastDelayedHits.length > 0) {
-    el.arena.classList.add('wide-warning');
-  } else {
-    el.arena.classList.remove('wide-warning');
-  }
 });
 
 socket.on('battle_event', entry => {
@@ -433,7 +327,7 @@ socket.on('battle_event', entry => {
       flashSprite(isPlayerAttacking ? el.oppSprite : el.plSprite, 'hurt');
     }
     if (entry.damage > 0) {
-      spawnDmgFloat(isPlayerAttacking ? el.oppSprite : el.plSprite, entry.damage);
+      spawnDmgFloat(isPlayerAttacking ? el.oppAnchor : el.plAnchor, entry.damage);
     }
   }
 
@@ -463,8 +357,8 @@ socket.on('error', data => {
 // Sprite positioning
 // -------------------------------------------------------------------------
 function updateSpritePositions(player, opponent) {
-  positionSprite(el.plSprite, player.pos_x, player.pos_z);
-  positionSprite(el.oppSprite, opponent.pos_x, opponent.pos_z);
+  setGroundPos(el.plAnchor,  player.pos_x,   player.pos_z);
+  setGroundPos(el.oppAnchor, opponent.pos_x, opponent.pos_z);
   setSpriteState(el.plSprite,  player.state);
   setSpriteState(el.oppSprite, opponent.state);
 }
@@ -472,15 +366,6 @@ function updateSpritePositions(player, opponent) {
 function setSpriteState(spriteEl, state) {
   spriteEl.classList.remove('state-idle', 'state-moving', 'state-attacking', 'state-hurt', 'state-winding_up');
   spriteEl.classList.add('state-' + state);
-}
-
-function positionSprite(spriteEl, pos_x, pos_z) {
-  const { x, y, scale } = fieldToScreen(pos_x, pos_z);
-  const size = Math.round(52 * scale);
-  spriteEl.style.left  = (x - size / 2) + 'px';
-  spriteEl.style.top   = (y - size) + 'px';
-  spriteEl.style.transform = `scale(${scale.toFixed(3)})`;
-  spriteEl.style.transformOrigin = 'bottom center';
 }
 
 // -------------------------------------------------------------------------

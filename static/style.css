@@ -188,34 +188,9 @@ select:hover { border-color: #8080cc; }
 }
 #battle-screen.active { display: flex; }
 
-/* -------------------------------------------------------
-   Fighter HUDs (top = opponent, bottom = player)
-------------------------------------------------------- */
-.fighter-hud {
-  padding: 10px 16px;
-  background: var(--bg2);
-  border-bottom: 1px solid var(--border);
-}
-.player-hud  { border-top: 1px solid var(--border); border-bottom: none; }
-
-.fighter-name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 6px;
-}
-.fighter-emoji { font-size: 20px; }
-.fighter-name  {
-  font-family: var(--font-pixel);
-  font-size: 9px;
-  color: var(--text-bright);
-  letter-spacing: 1px;
-}
-.fighter-stage { font-size: 10px; color: var(--text-dim); margin-left: 4px; }
-
+/* Status badges (used in arena HUDs) */
 .status-badges { display: flex; gap: 4px; flex-wrap: wrap; margin-left: auto; }
 .status-badge {
-  font-size: 9px;
   padding: 2px 6px;
   border-radius: 3px;
   font-family: var(--font-pixel);
@@ -225,21 +200,6 @@ select:hover { border-color: #8080cc; }
 .status-CONFUSION { background: #5a3a00; color: #ffb84d; }
 .status-PARALYSIS { background: #3a3a00; color: #ffff4d; }
 .status-STUN      { background: #1a2a3a; color: #4da6ff; }
-
-.bars-block { display: flex; flex-direction: column; gap: 4px; }
-
-.bar-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.bar-row label {
-  font-family: var(--font-pixel);
-  font-size: 7px;
-  width: 24px;
-  color: var(--text-dim);
-  flex-shrink: 0;
-}
 .bar-track {
   flex: 1;
   height: 10px;
@@ -272,72 +232,107 @@ select:hover { border-color: #8080cc; }
 }
 
 /* -------------------------------------------------------
-   Arena — 2.5D perspective stage
+   Arena — CSS 3D perspective stage
 ------------------------------------------------------- */
 .arena {
   flex: 1;
   position: relative;
   overflow: hidden;
-  min-height: 140px;
-  /* Sky → grass transition */
-  background: linear-gradient(180deg,
-    #0c0c22 0%,
-    #1a2a5a 45%,
-    #2a5a2a 55%,
-    #1a3a12 100%
-  );
+  min-height: 220px;
+  background: #0c0c1e; /* fallback */
 }
 
-/* Perspective dirt/grass oval on the ground plane */
-.arena::before {
+/* Sky art: gradient + star dots */
+#arena-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 110%, #1a3a10 0%, transparent 55%),
+    radial-gradient(ellipse at 50% -10%, #1a3a7a 0%, transparent 60%),
+    linear-gradient(180deg, #080814 0%, #0e1630 45%, #1a2a5a 65%, #0e1a0e 100%);
+  z-index: 0;
+}
+#arena-sky::before {
   content: '';
   position: absolute;
-  bottom: 8%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 82%;
-  height: 20%;
-  background: radial-gradient(ellipse, #6a4f1a 0%, #3a7a20 55%, transparent 100%);
-  border-radius: 50%;
-  opacity: 0.5;
-  pointer-events: none;
+  inset: 0;
+  background-image:
+    radial-gradient(1px 1px at 15% 20%, rgba(255,255,255,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 75% 8%,  rgba(255,255,255,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 40% 35%, rgba(255,255,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 88% 22%, rgba(255,255,255,0.5) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 12%, rgba(255,255,255,0.4) 0%, transparent 100%),
+    radial-gradient(1px 1px at 28% 5%,  rgba(255,255,255,0.3) 0%, transparent 100%),
+    radial-gradient(1px 1px at 92% 40%, rgba(255,255,255,0.2) 0%, transparent 100%);
+}
+
+/* CSS 3D scene container */
+#arena-scene {
+  position: absolute;
+  inset: 0;
+  perspective: 420px;
+  perspective-origin: 50% 32%;
   z-index: 1;
 }
 
-/* Ground canvas — perspective grid drawn by JS */
-#ground-canvas {
+/* Tilted ground plane */
+#ground-plane {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  top: 32%;
+  left: 50%;
+  transform: translateX(-50%) rotateX(68deg);
+  transform-origin: top center;
+  transform-style: preserve-3d;
+  width: 260%;
+  height: 300%;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px, transparent 59px,
+      rgba(0,0,0,0.18) 60px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0px, transparent 59px,
+      rgba(0,0,0,0.18) 60px
+    ),
+    linear-gradient(to bottom, #2e6e1e 0%, #1a4a0e 100%);
+}
+
+/* Zero-size positioning anchor on the ground plane */
+.sprite-anchor {
+  position: absolute;
+  width: 0;
+  height: 0;
+  transform-style: preserve-3d;
+}
+
+/* Flat shadow ellipse — stays on ground (no billboard) */
+.sprite-shadow {
+  position: absolute;
+  width: 50px;
+  height: 18px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(0,0,0,0.6) 0%, transparent 100%);
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 
-/* Projectile canvas overlay */
-#projectile-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  z-index: 5;
-}
-
+/* Billboard sprite — counter-rotates to stand upright */
 .sprite {
   position: absolute;
+  bottom: 0;
+  left: 0;
+  transform: translateX(-50%) rotateX(-68deg);
+  transform-origin: bottom center;
+  transform-style: preserve-3d;
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  /* left/top set dynamically by JS via fieldToScreen() */
-  transform-origin: bottom center;
-  transition: left 0.1s linear, top 0.1s linear, transform 0.1s linear;
-  z-index: 10;
   pointer-events: none;
-  /* Ground shadow for depth */
-  filter: drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  z-index: 2;
 }
 
-/* Sprite inner emoji — size scales with depth via JS transform: scale() */
 .sprite-inner {
   font-size: 52px;
   line-height: 1;
@@ -345,20 +340,102 @@ select:hover { border-color: #8080cc; }
 }
 
 .opponent-sprite {
-  filter: drop-shadow(0 4px 8px var(--opp-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(0 0 8px var(--opp-glow));
 }
 .player-sprite {
-  filter: drop-shadow(0 4px 8px var(--player-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  filter: drop-shadow(0 0 8px var(--player-glow));
 }
 
-/* WIDE move warning flash on arena background */
-.arena.wide-warning {
-  animation: wide-flash 0.5s ease infinite alternate;
+/* Projectile divs positioned on ground plane */
+.projectile {
+  position: absolute;
+  width: 0;
+  height: 0;
+  pointer-events: none;
 }
-@keyframes wide-flash {
-  from { background: linear-gradient(180deg, #0c0c22 0%, #1a2a5a 45%, #2a5a2a 55%, #1a3a12 100%); }
-  to   { background: linear-gradient(180deg, #2a0c0c 0%, #5a1a1a 45%, #5a2a1a 55%, #3a1a0a 100%); }
+.projectile-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) rotateX(-68deg);
+  transform-origin: center center;
 }
+
+/* WIDE move warning overlay */
+#wide-warning-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 8;
+  opacity: 0;
+  background: radial-gradient(ellipse at center, rgba(231,76,60,0.15) 0%, transparent 70%);
+  transition: opacity 0.2s;
+}
+#wide-warning-overlay.active {
+  animation: wide-pulse 0.5s ease infinite alternate;
+  opacity: 1;
+}
+@keyframes wide-pulse {
+  from { opacity: 0.3; }
+  to   { opacity: 0.8; }
+}
+
+/* Compact in-arena HUDs */
+.arena-hud {
+  position: absolute;
+  z-index: 20;
+  background: rgba(8, 8, 20, 0.78);
+  border: 1px solid var(--border-glow);
+  border-radius: 6px;
+  padding: 8px 10px;
+  width: 240px;
+  backdrop-filter: blur(4px);
+}
+.arena-hud-pl {
+  bottom: 12px;
+  left: 12px;
+  border-color: #2a5080;
+}
+.arena-hud-opp {
+  top: 12px;
+  right: 12px;
+  border-color: #6a2020;
+}
+
+.ahud-name-row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 5px;
+  flex-wrap: wrap;
+}
+.ahud-emoji { font-size: 16px; }
+.ahud-name {
+  font-family: var(--font-pixel);
+  font-size: 7px;
+  color: var(--text-bright);
+  letter-spacing: 1px;
+}
+.ahud-stage { font-size: 9px; color: var(--text-dim); }
+
+.ahud-bars { display: flex; flex-direction: column; gap: 3px; }
+
+.ahud-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ahud-bar-row label {
+  font-family: var(--font-pixel);
+  font-size: 6px;
+  width: 20px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.ahud-cmds { margin-top: 6px; }
+.ahud-techs { margin-top: 4px; }
 
 .sprite.attacking {
   animation: attack-flash 0.15s ease-out;
@@ -374,7 +451,7 @@ select:hover { border-color: #8080cc; }
 }
 @keyframes hurt-flash {
   0%   { filter: brightness(1) saturate(1); }
-  25%  { filter: brightness(3) saturate(0) drop-shadow(0 0 8px #fff); }
+  25%  { filter: brightness(3) saturate(0) drop-shadow(0 0 10px #fff); }
   100% { filter: brightness(1) saturate(1); }
 }
 
@@ -385,13 +462,13 @@ select:hover { border-color: #8080cc; }
   animation: windup-pulse 0.4s ease-in-out infinite alternate;
 }
 .sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px #fff) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  filter: brightness(1.7) drop-shadow(0 0 14px #fff);
 }
 .opponent-sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px var(--opp-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  filter: brightness(1.7) drop-shadow(0 0 14px var(--opp-glow));
 }
 .player-sprite.state-attacking {
-  filter: brightness(1.7) drop-shadow(0 0 14px var(--player-glow)) drop-shadow(0 6px 5px rgba(0, 0, 0, 0.55));
+  filter: brightness(1.7) drop-shadow(0 0 14px var(--player-glow));
 }
 
 @keyframes windup-pulse {
@@ -637,7 +714,7 @@ select:hover { border-color: #8080cc; }
    Responsive
 ------------------------------------------------------- */
 @media (max-height: 600px) {
-  .arena { min-height: 80px; }
-  .sprite { width: 60px; height: 60px; font-size: 38px; }
+  .arena { min-height: 120px; }
+  .sprite-inner { font-size: 38px; }
   #battle-log-panel { height: 70px; }
 }
