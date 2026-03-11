@@ -237,13 +237,20 @@ class BattleEngine:
         self._tick_windup(self.player, self.opponent)
         self._tick_windup(self.opponent, self.player)
 
-        # 9b. Let each fighter start a new action if able
+        # 9b. Let each fighter start a new action if able (with think delay)
         for attacker, defender in [
             (self.player, self.opponent),
             (self.opponent, self.player),
         ]:
-            if attacker.can_act:
-                self._execute_action(attacker, defender)
+            if not attacker.can_act:
+                continue
+            if attacker.think_timer == 0:
+                attacker.think_timer = random.randint(8, 22)  # 0.27–0.73s pause
+                continue
+            attacker.think_timer -= 1
+            if attacker.think_timer > 0:
+                continue
+            self._execute_action(attacker, defender)
 
         # 10. Emit state
         self._emit_state()
@@ -283,8 +290,8 @@ class BattleEngine:
             f.state = "moving"
             # Fall through to X-axis strafing below
 
-        else:
-            # --- Z-axis: approach / retreat ---
+        elif f.windup_action is None:
+            # --- Z-axis: approach / retreat (frozen during windup) ---
             dist = abs(other.pos_z - f.pos_z)
             target = f.preferred_distance
 

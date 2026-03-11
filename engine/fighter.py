@@ -92,9 +92,12 @@ class Fighter:
     # Retreat impulse — set when taking a hit; overrides approach for N ticks
     hurt_retreat_timer: int = field(default=0, init=False)
 
-    # Windup — queues an attack for 20 ticks before firing
+    # Windup — queues an attack for N ticks before firing
     windup_ticks_remaining: int = field(default=0, init=False)
     windup_action: str | None = field(default=None, init=False)
+
+    # Think delay — set fresh each time can_act fires; pauses before committing
+    think_timer: int = field(default=0, init=False)
 
     # Techniques available
     techniques: list = field(default_factory=list)

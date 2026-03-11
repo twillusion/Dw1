@@ -157,10 +157,9 @@ function initArena() {
 
   scene = new THREE.Scene();
 
-  // RTS camera: high in the sky, angled steeply down, rotated ~20° around Y
+  // Isometric camera: equal X/Y/Z → 45° horizontal, ~35° elevation (classic AoE/cube view)
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-  const CAM_ANGLE = 20 * Math.PI / 180;
-  camera.position.set(Math.sin(CAM_ANGLE) * 120, 210, Math.cos(CAM_ANGLE) * 120);
+  camera.position.set(140, 140, 140);
   camera.lookAt(0, 0, 0);
 
   // Ground plane (XZ, covers expanded field + margin)
@@ -236,8 +235,8 @@ function makeEmojiSprite(emoji) {
     depthWrite: false,
   });
   const sp = new THREE.Sprite(mat);
-  sp.scale.set(20, 20, 1);
-  sp.position.y = 10;
+  sp.scale.set(SPRITE_W, SPRITE_H, 1);
+  sp.position.y = 16;
   return sp;
 }
 
@@ -303,9 +302,9 @@ function initFighterSprites(playerData, opponentData) {
   // Place at initial positions
   const pw = engineToWorld(playerData.pos_x,   playerData.pos_z);
   const ow = engineToWorld(opponentData.pos_x, opponentData.pos_z);
-  fighters.player.sprite.position.set(pw.x, 10, pw.z);
+  fighters.player.sprite.position.set(pw.x, 16, pw.z);
   fighters.player.shadow.position.set(pw.x + SUN.x, 0.05, pw.z + SUN.z);
-  fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
+  fighters.opponent.sprite.position.set(ow.x, 16, ow.z);
   fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
 }
 
@@ -316,12 +315,12 @@ function updateSpritePositions(player, opponent) {
   if (!fighters.player.sprite) return;
 
   const pw = engineToWorld(player.pos_x, player.pos_z);
-  fighters.player.sprite.position.set(pw.x, 10, pw.z);
+  fighters.player.sprite.position.set(pw.x, 16, pw.z);
   fighters.player.shadow.position.set(pw.x + SUN.x, 0.05, pw.z + SUN.z);
   fighters.player.state = player.state;
 
   const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
-  fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
+  fighters.opponent.sprite.position.set(ow.x, 16, ow.z);
   fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
   fighters.opponent.state = opponent.state;
 }
@@ -338,7 +337,8 @@ function flashFighter(key, type) {
 // Per-frame fighter animation
 // -------------------------------------------------------------------------
 const WINDUP_FREQ = Math.PI * 5;  // ~2.5 Hz pulse
-const BASE_SCALE  = 20;
+const SPRITE_W = 20;   // world units wide
+const SPRITE_H = 32;   // world units tall (taller than wide for isometric view)
 
 function animateFighterState(fighter) {
   if (!fighter.sprite) return;
@@ -353,16 +353,16 @@ function animateFighterState(fighter) {
     } else if (fighter.flashClass === 'attacking') {
       sp.material.color.setRGB(1.7, 1.7, 1.7);  // brightness boost
     }
-    sp.scale.set(BASE_SCALE, BASE_SCALE, 1);
+    sp.scale.set(SPRITE_W, SPRITE_H, 1);
   } else {
     fighter.flashClass = null;
     sp.material.color.set(0xffffff);
 
     if (fighter.state === 'winding_up') {
-      const s = BASE_SCALE * (1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ));
-      sp.scale.set(s, s, 1);
+      const pulse = 1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ);
+      sp.scale.set(SPRITE_W * pulse, SPRITE_H * pulse, 1);
     } else {
-      sp.scale.set(BASE_SCALE, BASE_SCALE, 1);
+      sp.scale.set(SPRITE_W, SPRITE_H, 1);
     }
   }
 }
