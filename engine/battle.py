@@ -701,7 +701,6 @@ class BattleEngine:
             "player": self.player.to_dict(),
             "opponent": self.opponent.to_dict(),
             "projectiles": [p.to_dict() for p in self.projectiles],
-            "delayed_hits": [dh.to_dict() for dh in self.delayed_hits],
             "awaiting_finisher": self._pending_finisher is not None,
         })
 
