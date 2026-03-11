@@ -108,10 +108,10 @@ class BattleEngine:
         self.opponent: Fighter = make_fighter(opponent_name, is_player=False)
         self.emit = emit_fn
 
-        # Set starting positions: player near camera (z=15), opponent far (z=85)
-        self.player.pos_z = 15.0
+        # Set starting positions: player near camera (z=10), opponent far (z=110)
+        self.player.pos_z = 10.0
         self.player.pos_x = 0.0
-        self.opponent.pos_z = 85.0
+        self.opponent.pos_z = 110.0
         self.opponent.pos_x = 0.0
 
         self.tick_count: int = 0
@@ -261,52 +261,62 @@ class BattleEngine:
         opp_threat = (other.stamina / 100.0) * 0.5 + (other.current_hp / max(1, other.max_hp)) * 0.5
         # Map threat 0–1 → delta ±5 units around base distance
         delta = (opp_threat - 0.5) * 10.0
-        f.preferred_distance = max(5.0, min(60.0, f._base_preferred_distance + delta))
+        f.preferred_distance = max(3.0, min(60.0, f._base_preferred_distance + delta))
 
     def _move_fighter(self, f: Fighter, other: Fighter):
         """
         Move fighter toward/away from opponent to maintain preferred_distance.
-        Includes: idle lateral strafing, charge boost for melee, knockback, and
-        lateral dodge when a dodgeable projectile is incoming.
+        Includes: hurt retreat, circling strafe, charge boost for melee,
+        knockback, and lateral dodge when a dodgeable projectile is incoming.
         """
         # --- Knockback overrides normal movement ---
         if f.knockback_ticks > 0:
-            f.pos_z = max(5.0, min(95.0, f.pos_z + f.knockback_vel_z))
+            f.pos_z = max(5.0, min(115.0, f.pos_z + f.knockback_vel_z))
             f.knockback_ticks -= 1
             return
 
-        # --- Z-axis: approach / retreat ---
-        dist = abs(other.pos_z - f.pos_z)
-        target = f.preferred_distance
-
-        # Charge boost: melee fighters sprint when far from the opponent
-        if dist > target + 20 and f._base_preferred_distance <= 12:
-            effective_speed = f.move_speed * 2.0
-        else:
-            effective_speed = f.move_speed
-
-        if dist > target + 5:
-            f.pos_z += effective_speed * _sign(other.pos_z - f.pos_z)
+        # --- Hurt retreat: back away after taking a hit ---
+        if f.hurt_retreat_timer > 0:
+            f.hurt_retreat_timer -= 1
+            f.pos_z -= f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.pos_z = max(5.0, min(115.0, f.pos_z))
             f.state = "moving"
-        elif dist < target - 5:
-            f.pos_z -= effective_speed * _sign(other.pos_z - f.pos_z)
-            f.state = "moving"
+            # Fall through to X-axis strafing below
+
         else:
-            f.state = "idle"
+            # --- Z-axis: approach / retreat ---
+            dist = abs(other.pos_z - f.pos_z)
+            target = f.preferred_distance
 
-        f.pos_z = max(5.0, min(95.0, f.pos_z))
+            # Charge boost: melee fighters sprint when far from the opponent
+            if dist > target + 20 and f._base_preferred_distance <= 8:
+                effective_speed = f.move_speed * 2.0
+            else:
+                effective_speed = f.move_speed
 
-        # --- X-axis: idle strafing (always active) ---
+            if dist > target + 5:
+                f.pos_z += effective_speed * _sign(other.pos_z - f.pos_z)
+                f.state = "moving"
+            elif dist < target - 5:
+                f.pos_z -= effective_speed * _sign(other.pos_z - f.pos_z)
+                f.state = "moving"
+            else:
+                f.state = "idle"
+
+            f.pos_z = max(5.0, min(115.0, f.pos_z))
+
+        # --- X-axis: orbit/circle around opponent ---
         if f.strafe_timer <= 0:
-            f.strafe_target_x = random.uniform(-40.0, 40.0)
-            f.strafe_timer = random.randint(40, 80)
+            orbit_offset = random.uniform(20.0, 50.0) * random.choice([-1, 1])
+            f.strafe_target_x = max(-65.0, min(65.0, other.pos_x + orbit_offset))
+            f.strafe_timer = random.randint(30, 60)
         else:
             f.strafe_timer -= 1
 
         dx = f.strafe_target_x - f.pos_x
         if abs(dx) > 1.0:
-            f.pos_x += _sign(dx) * f.move_speed * 0.35
-        f.pos_x = max(-55.0, min(55.0, f.pos_x))
+            f.pos_x += _sign(dx) * f.move_speed * 0.45
+        f.pos_x = max(-65.0, min(65.0, f.pos_x))
 
         # --- Lateral dodge for incoming projectiles ---
         for p in self.projectiles:
@@ -317,7 +327,7 @@ class BattleEngine:
             if ticks_away < 25 and abs(p.pos_x - f.pos_x) < DODGE_THRESHOLD * 1.5:
                 if random.random() < 0.40:
                     direction = 1 if f.pos_x <= 0 else -1
-                    f.pos_x = max(-55.0, min(55.0, f.pos_x + direction * f.move_speed * 1.8))
+                    f.pos_x = max(-65.0, min(65.0, f.pos_x + direction * f.move_speed * 1.8))
                     f.strafe_target_x = f.pos_x  # prevent immediate drift back
 
     # -----------------------------------------------------------------------
@@ -423,6 +433,7 @@ class BattleEngine:
         attacker.knockback_vel_z = -attacker.move_speed * 1.2 * _sign(defender.pos_z - attacker.pos_z)
         defender.knockback_ticks = 6
         defender.knockback_vel_z = attacker.move_speed * 1.0 * _sign(defender.pos_z - attacker.pos_z)
+        defender.hurt_retreat_timer = 50  # ~1.7s backing away before re-engaging
 
         status_msg = ""
         if tech["status"] and roll_status(tech.get("status_chance", 0)):
@@ -658,7 +669,7 @@ class BattleEngine:
         # Reset speed buffer now — locks out can_act during windup
         attacker.reset_speed_buffer()
         attacker.windup_action = tech_name
-        attacker.windup_ticks_remaining = 20
+        attacker.windup_ticks_remaining = 35 if tech_range == "SHORT" else 20
         attacker.state = "winding_up"
 
     # -----------------------------------------------------------------------

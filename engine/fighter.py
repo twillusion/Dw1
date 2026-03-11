@@ -89,6 +89,9 @@ class Fighter:
     knockback_ticks: int = field(default=0, init=False)
     knockback_vel_z: float = field(default=0.0, init=False)
 
+    # Retreat impulse — set when taking a hit; overrides approach for N ticks
+    hurt_retreat_timer: int = field(default=0, init=False)
+
     # Windup — queues an attack for 20 ticks before firing
     windup_ticks_remaining: int = field(default=0, init=False)
     windup_action: str | None = field(default=None, init=False)

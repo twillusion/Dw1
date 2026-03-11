@@ -366,17 +366,17 @@ def get_type_factor(attacker_type: str, defender_type: str) -> int:
 # ---------------------------------------------------------------------------
 
 # Distance (field units) within which SHORT range attacks can land.
-# Kept tight: melee requires fighters to be nearly adjacent (~12% of field).
-SHORT_RANGE_THRESHOLD = 12
+# Very tight: melee requires fighters to be essentially touching (~5% of field).
+SHORT_RANGE_THRESHOLD = 6
 
 # Fixed movement speed for all Digimon (units per tick at 30 ticks/sec)
 # Can be individualised per Digimon in a future iteration
 MOVE_SPEED = 0.72
 
-# Preferred standoff distances (field units)
-PREFERRED_DIST_MELEE  = 8    # all SHORT range → right up close
-PREFERRED_DIST_RANGED = 45   # all LONG range  → maintain distance
-PREFERRED_DIST_MIXED  = 32   # mixed moveset   → medium range
+# Preferred standoff distances (field units, expanded field = 0–120 Z)
+PREFERRED_DIST_MELEE  = 5    # all SHORT range → right on top of opponent
+PREFERRED_DIST_RANGED = 55   # all LONG range  → maintain standoff
+PREFERRED_DIST_MIXED  = 38   # mixed moveset   → medium range
 
 # Projectile travel speed (field units per tick)
 PROJECTILE_SPEED = 1.625

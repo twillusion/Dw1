@@ -143,8 +143,8 @@ const PROJ_COLORS_HEX = {
 // Coordinate mapping
 // -------------------------------------------------------------------------
 function engineToWorld(pos_x, pos_z) {
-  // pos_z=0 (player near) → world Z=+50; pos_z=100 (opponent far) → world Z=-50
-  return { x: pos_x, z: 50 - pos_z };
+  // Expanded field: pos_z=0 (player near) → world Z=+60; pos_z=120 (far) → world Z=-60
+  return { x: pos_x, z: 60 - pos_z };
 }
 
 // -------------------------------------------------------------------------
@@ -157,41 +157,43 @@ function initArena() {
 
   scene = new THREE.Scene();
 
-  // RTS camera: high in the sky, angled steeply down — no horizon visible
+  // RTS camera: high in the sky, angled steeply down, rotated ~20° around Y
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-  camera.position.set(0, 210, 120);
+  const CAM_ANGLE = 20 * Math.PI / 180;
+  camera.position.set(Math.sin(CAM_ANGLE) * 120, 210, Math.cos(CAM_ANGLE) * 120);
   camera.lookAt(0, 0, 0);
 
-  // Ground plane (XZ, covers field + margin)
-  const gGeo = new THREE.PlaneGeometry(140, 120);
+  // Ground plane (XZ, covers expanded field + margin)
+  const gGeo = new THREE.PlaneGeometry(165, 155);
   gGeo.rotateX(-Math.PI / 2);
   scene.add(new THREE.Mesh(gGeo,
     new THREE.MeshBasicMaterial({ color: 0x1a4a0e })));
 
   // Lighter strip toward player side (visual depth cue)
-  const stripGeo = new THREE.PlaneGeometry(140, 60);
+  // Field Z: 0–120 → world +60 to -60; near half = world 0 to +60, centre at +30
+  const stripGeo = new THREE.PlaneGeometry(165, 75);
   stripGeo.rotateX(-Math.PI / 2);
   const strip = new THREE.Mesh(stripGeo,
     new THREE.MeshBasicMaterial({ color: 0x2e6e1e }));
-  strip.position.set(0, 0.01, 25);  // near half of field
+  strip.position.set(0, 0.01, 30);
   scene.add(strip);
 
-  // Grid lines
+  // Grid lines (expanded: Z ±60, X ±75)
   const gridPts = [];
-  for (let z = -50; z <= 50; z += 10)
-    gridPts.push(-70, 0.02, z,  70, 0.02, z);
-  for (let x = -70; x <= 70; x += 10)
-    gridPts.push(x, 0.02, -50,  x, 0.02, 50);
+  for (let z = -60; z <= 60; z += 10)
+    gridPts.push(-75, 0.02, z,  75, 0.02, z);
+  for (let x = -75; x <= 75; x += 10)
+    gridPts.push(x, 0.02, -60,  x, 0.02, 60);
   const gridGeo = new THREE.BufferGeometry();
   gridGeo.setAttribute('position', new THREE.Float32BufferAttribute(gridPts, 3));
   scene.add(new THREE.LineSegments(gridGeo,
     new THREE.LineBasicMaterial({ color: 0x000000, opacity: 0.20, transparent: true })));
 
-  // Gold boundary lines: pos_x=±55 → world x=±55; pos_z=100 → world z=-50
+  // Gold boundary lines: pos_x=±65 → world x=±65; pos_z=120 → world z=-60
   const bPts = [
-    -55, 0.05,  50,  -55, 0.05, -50,   // left edge
-     55, 0.05,  50,   55, 0.05, -50,   // right edge
-    -55, 0.05, -50,   55, 0.05, -50,   // back line
+    -65, 0.05,  60,  -65, 0.05, -60,   // left edge
+     65, 0.05,  60,   65, 0.05, -60,   // right edge
+    -65, 0.05, -60,   65, 0.05, -60,   // back line
   ];
   const bGeo = new THREE.BufferGeometry();
   bGeo.setAttribute('position', new THREE.Float32BufferAttribute(bPts, 3));
@@ -252,12 +254,29 @@ function makeShadowMesh() {
   return m;
 }
 
-function makeShadowMesh() {
+function makeShadowTexture(emoji) {
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = 128;
+  const ctx = cv.getContext('2d');
+  ctx.font = '90px serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(emoji, 64, 68);
+  const img = ctx.getImageData(0, 0, 128, 128);
+  for (let i = 0; i < img.data.length; i += 4) {
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = 0;  // black, keep alpha
+  }
+  ctx.putImageData(img, 0, 0);
+  return new THREE.CanvasTexture(cv);
+}
+
+function makeShadowMesh(emoji) {
   const g = new THREE.PlaneGeometry(24, 10);
   g.rotateY(Math.atan2(SUN.x, SUN.z));  // align elongation with sun angle
   g.rotateX(-Math.PI / 2);
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false,
+    map: makeShadowTexture(emoji),
+    transparent: true, opacity: 0.55, depthWrite: false,
   }));
 }
 
@@ -269,14 +288,14 @@ function initFighterSprites(playerData, opponentData) {
   for (const key of ['player', 'opponent']) {
     const f = fighters[key];
     if (f.sprite) { scene.remove(f.sprite); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
-    if (f.shadow) { scene.remove(f.shadow); f.shadow.material.dispose(); }
+    if (f.shadow) { scene.remove(f.shadow); f.shadow.material.map.dispose(); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
   }
 
   fighters.player.sprite   = makeEmojiSprite(playerData.emoji);
-  fighters.player.shadow   = makeShadowMesh();
+  fighters.player.shadow   = makeShadowMesh(playerData.emoji);
   fighters.opponent.sprite = makeEmojiSprite(opponentData.emoji);
-  fighters.opponent.shadow = makeShadowMesh();
+  fighters.opponent.shadow = makeShadowMesh(opponentData.emoji);
 
   scene.add(fighters.player.sprite,   fighters.player.shadow);
   scene.add(fighters.opponent.sprite, fighters.opponent.shadow);
