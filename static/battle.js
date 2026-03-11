@@ -116,10 +116,12 @@ const fighters = {
   player: {
     sprite: null, shadow: null,
     state: 'idle', flashClass: null, flashUntil: 0,
+    facing: 1,
   },
   opponent: {
     sprite: null, shadow: null,
     state: 'idle', flashClass: null, flashUntil: 0,
+    facing: -1,
   },
 };
 
@@ -217,13 +219,15 @@ function onResize() {
 // -------------------------------------------------------------------------
 function makeEmojiTexture(emoji) {
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
+  cv.width = cv.height = 256;
   const ctx = cv.getContext('2d');
-  ctx.font = '90px serif';
+  ctx.font = '192px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, 64, 68);
+  ctx.fillText(emoji, 128, 136);
   const tex = new THREE.CanvasTexture(cv);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
   return tex;
 }
@@ -255,18 +259,21 @@ function makeShadowMesh() {
 
 function makeShadowTexture(emoji) {
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 128;
+  cv.width = cv.height = 256;
   const ctx = cv.getContext('2d');
-  ctx.font = '90px serif';
+  ctx.font = '192px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(emoji, 64, 68);
-  const img = ctx.getImageData(0, 0, 128, 128);
+  ctx.fillText(emoji, 128, 136);
+  const img = ctx.getImageData(0, 0, 256, 256);
   for (let i = 0; i < img.data.length; i += 4) {
     img.data[i] = img.data[i + 1] = img.data[i + 2] = 0;  // black, keep alpha
   }
   ctx.putImageData(img, 0, 0);
-  return new THREE.CanvasTexture(cv);
+  const tex = new THREE.CanvasTexture(cv);
+  tex.generateMipmaps = false;
+  tex.minFilter = THREE.LinearFilter;
+  return tex;
 }
 
 function makeShadowMesh(emoji) {
@@ -315,11 +322,27 @@ function updateSpritePositions(player, opponent) {
   if (!fighters.player.sprite) return;
 
   const pw = engineToWorld(player.pos_x, player.pos_z);
+  const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
+
+  // Update facing from lateral movement delta
+  const dxP = pw.x - (fighters.player._prevX ?? pw.x);
+  if (Math.abs(dxP) > 0.3) fighters.player.facing = dxP > 0 ? 1 : -1;
+  fighters.player._prevX = pw.x;
+
+  const dxO = ow.x - (fighters.opponent._prevX ?? ow.x);
+  if (Math.abs(dxO) > 0.3) fighters.opponent.facing = dxO > 0 ? 1 : -1;
+  fighters.opponent._prevX = ow.x;
+
+  // During attack/windup always face the opponent
+  if (player.state === 'winding_up' || player.state === 'attacking')
+    fighters.player.facing = ow.x > pw.x ? 1 : -1;
+  if (opponent.state === 'winding_up' || opponent.state === 'attacking')
+    fighters.opponent.facing = pw.x > ow.x ? 1 : -1;
+
   fighters.player.sprite.position.set(pw.x, 16, pw.z);
   fighters.player.shadow.position.set(pw.x + SUN.x, 0.05, pw.z + SUN.z);
   fighters.player.state = player.state;
 
-  const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
   fighters.opponent.sprite.position.set(ow.x, 16, ow.z);
   fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
   fighters.opponent.state = opponent.state;
@@ -345,6 +368,7 @@ function animateFighterState(fighter) {
   const sp  = fighter.sprite;
   const now = performance.now();
 
+  const facing = fighter.facing || 1;
   if (fighter.flashClass && now < fighter.flashUntil) {
     if (fighter.flashClass === 'hurt') {
       sp.material.color.set(0xffffff);  // white flash
@@ -353,16 +377,16 @@ function animateFighterState(fighter) {
     } else if (fighter.flashClass === 'attacking') {
       sp.material.color.setRGB(1.7, 1.7, 1.7);  // brightness boost
     }
-    sp.scale.set(SPRITE_W, SPRITE_H, 1);
+    sp.scale.set(SPRITE_W * facing, SPRITE_H, 1);
   } else {
     fighter.flashClass = null;
     sp.material.color.set(0xffffff);
 
     if (fighter.state === 'winding_up') {
       const pulse = 1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ);
-      sp.scale.set(SPRITE_W * pulse, SPRITE_H * pulse, 1);
+      sp.scale.set(SPRITE_W * facing * pulse, SPRITE_H * pulse, 1);
     } else {
-      sp.scale.set(SPRITE_W, SPRITE_H, 1);
+      sp.scale.set(SPRITE_W * facing, SPRITE_H, 1);
     }
   }
 }
@@ -441,6 +465,24 @@ function spawnDmgFloat(worldPos3, damage) {
   float.style.position = 'fixed';
   document.body.appendChild(float);
   setTimeout(() => float.remove(), 1200);
+}
+
+function spawnMoveNameFloat(key, techName) {
+  const f = fighters[key];
+  if (!f.sprite || !techName) return;
+  const ndc = f.sprite.position.clone();
+  ndc.y += 20;
+  ndc.project(camera);
+  const rect = el.arenaCanvas.getBoundingClientRect();
+  const sx = (ndc.x *  0.5 + 0.5) * rect.width  + rect.left;
+  const sy = (ndc.y * -0.5 + 0.5) * rect.height + rect.top;
+  const el2 = document.createElement('div');
+  el2.className = 'move-float';
+  el2.textContent = techName;
+  el2.style.left = sx + 'px';
+  el2.style.top  = (sy - 8) + 'px';
+  document.body.appendChild(el2);
+  setTimeout(() => el2.remove(), 1100);
 }
 
 // -------------------------------------------------------------------------
@@ -611,6 +653,10 @@ socket.on('battle_event', entry => {
         worldPos.y += 12;
         spawnDmgFloat(worldPos, entry.damage);
       }
+    }
+    if (entry.tech_name) {
+      const attackerKey = isPlayerAttacking ? 'player' : 'opponent';
+      spawnMoveNameFloat(attackerKey, entry.tech_name);
     }
   }
 

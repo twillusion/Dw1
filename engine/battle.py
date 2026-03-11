@@ -413,7 +413,7 @@ class BattleEngine:
             )
             self._next_id += 1
             self.projectiles.append(proj)
-            self._log_event("attack", f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!", color=attacker.color, damage=dmg)
+            self._log_event("attack", f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!", color=attacker.color, damage=dmg, tech_name=tech_name)
             return
 
         # --- SHORT move → instant damage ---
@@ -440,13 +440,13 @@ class BattleEngine:
         attacker.knockback_vel_z = -attacker.move_speed * 1.2 * _sign(defender.pos_z - attacker.pos_z)
         defender.knockback_ticks = 6
         defender.knockback_vel_z = attacker.move_speed * 1.0 * _sign(defender.pos_z - attacker.pos_z)
-        defender.hurt_retreat_timer = 50  # ~1.7s backing away before re-engaging
+        defender.hurt_retreat_timer = 15  # ~0.5s backing away before re-engaging
 
         status_msg = ""
         if tech["status"] and roll_status(tech.get("status_chance", 0)):
             defender.apply_status(tech["status"])
             status_msg = f" {defender.name} is {tech['status'].lower()}ed!"
-        self._log_event("attack", f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}", color=attacker.color, damage=dmg)
+        self._log_event("attack", f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}", color=attacker.color, damage=dmg, tech_name=tech_name)
         attacker.advance_finisher()
         if attacker.finisher_ready:
             self._trigger_finisher(attacker, defender)
@@ -520,6 +520,7 @@ class BattleEngine:
             f"{p.attacker_name}'s {p.tech_name} hits {defender.name} → {p.damage} dmg!{status_msg}",
             color="#f39c12",
             damage=p.damage,
+            tech_name=p.tech_name,
         )
 
     # -----------------------------------------------------------------------
@@ -747,13 +748,14 @@ class BattleEngine:
             return self.opponent
         return None
 
-    def _log_event(self, event_type: str, message: str, color: str = "#ecf0f1", damage: int = 0):
+    def _log_event(self, event_type: str, message: str, color: str = "#ecf0f1", damage: int = 0, tech_name: str = ""):
         entry = {
             "tick": self.tick_count,
             "type": event_type,
             "message": message,
             "color": color,
             "damage": damage,
+            "tech_name": tech_name,
         }
         self.log.append(entry)
         if len(self.log) > 200:
