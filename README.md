@@ -2,11 +2,18 @@
 
 A real-time browser-based battle simulator for **Digimon World 1 (PS1)**, with mechanics reverse-engineered from the original game's assembly code via [SydMontague/DW1-Code](https://github.com/SydMontague/DW1-Code).
 
+<!-- Screenshots: drop images into docs/screenshots/ and uncomment below -->
+<!--
+![Selection screen](docs/screenshots/selection.png)
+![Battle in progress](docs/screenshots/battle.png)
+-->
+
 ---
 
 ## Features
 
 - **Authentic battle formulas** sourced directly from `BTL_REL.BIN` disassembly
+- **Real-time 3D arena** rendered with Three.js — RTS-style overhead camera, no horizon visible
 - **Real-time simulation** at 30 ticks/second with live HP/MP bar updates
 - **10 playable Digimon** spanning Rookie through Mega
 - **21 techniques** with real Power, MP cost, accuracy, and element data
@@ -15,6 +22,8 @@ A real-time browser-based battle simulator for **Digimon World 1 (PS1)**, with m
 - **Finishing move mini-game** — button-mash to boost damage
 - **Command menu** — unlocks based on Brains stat (Auto → All-Out → Manual)
 - **Damage drain animation** matching the original tiered buffer system
+- **Projectile system** — LONG-range techniques spawn travelling projectiles with dodge AI
+- **WIDE attacks** — full-field delayed strikes with on-screen warning overlay
 
 ---
 
@@ -66,8 +75,22 @@ Dw1/
 └── static/
     ├── index.html
     ├── style.css
-    └── battle.js
+    └── battle.js        # Three.js arena + Socket.IO client
 ```
+
+---
+
+## Arena Rendering
+
+The battle arena is rendered with **Three.js r128** (WebGL). A `PerspectiveCamera` is placed at `(0, 210, 120)` looking at the field centre — roughly 60° elevation, which keeps the entire viewport filled with the ground plane and eliminates any sky/horizon.
+
+Engine coordinates (`pos_x`, `pos_z`) map to world space as:
+```
+world_x = pos_x
+world_z = 50 − pos_z   (player near = +50, opponent far = −50)
+```
+
+Fighters are `THREE.Sprite` objects with emoji drawn onto a `CanvasTexture`. Directional shadows are flat `PlaneGeometry` meshes offset by a fixed sun vector (`x+10, z+8`). Projectiles use `AdditiveBlending` sprites for a glow effect.
 
 ---
 
