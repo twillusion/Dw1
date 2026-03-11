@@ -258,7 +258,7 @@ DIGIMON = {
         "finisher": "Blizzard",
         "finisher_power": 380,
         "color": "#3498db",
-        "emoji": "🐺",
+        "emoji": "🐕",
     },
     "WereGarurumon": {
         "stage": "Ultimate",
@@ -280,7 +280,7 @@ DIGIMON = {
         "finisher": "Genocide Attack",
         "finisher_power": 950,
         "color": "#2980b9",
-        "emoji": "🐺",
+        "emoji": "🐕‍🦺",
     },
     "Angemon": {
         "stage": "Champion",
@@ -291,7 +291,7 @@ DIGIMON = {
         "finisher": "Thunder Claw",
         "finisher_power": 440,
         "color": "#f1c40f",
-        "emoji": "😇",
+        "emoji": "🕊️",
     },
     "Birdramon": {
         "stage": "Champion",
@@ -313,7 +313,7 @@ DIGIMON = {
         "finisher": "Earth Shaker",
         "finisher_power": 600,
         "color": "#1abc9c",
-        "emoji": "💀",
+        "emoji": "🦇",
     },
 }
 

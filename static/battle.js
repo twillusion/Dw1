@@ -113,16 +113,8 @@ let lastRafTime = 0;
 
 // Per-fighter Three.js objects + animation state
 const fighters = {
-  player: {
-    sprite: null, shadow: null,
-    state: 'idle', flashClass: null, flashUntil: 0,
-    angle: Math.PI,   // faces toward opponent (-Z direction initially)
-  },
-  opponent: {
-    sprite: null, shadow: null,
-    state: 'idle', flashClass: null, flashUntil: 0,
-    angle: 0,         // faces toward player (+Z direction initially)
-  },
+  player:   { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: true  },
+  opponent: { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: false },
 };
 
 // Projectile sprite pool: id → THREE.Sprite
@@ -297,7 +289,7 @@ function initFighterSprites(playerData, opponentData) {
     if (f.sprite) { scene.remove(f.sprite); f.sprite.geometry.dispose(); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
     if (f.shadow) { scene.remove(f.shadow); f.shadow.material.map.dispose(); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
-    f.angle = (key === 'player') ? Math.PI : 0;
+    f.facingRight = (key === 'player');
     f._prevX = undefined; f._prevZ = undefined;
   }
 
@@ -318,14 +310,6 @@ function initFighterSprites(playerData, opponentData) {
   fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
 }
 
-// Smoothly interpolate between two angles (shortest arc)
-function lerpAngle(a, b, t) {
-  let diff = b - a;
-  while (diff >  Math.PI) diff -= 2 * Math.PI;
-  while (diff < -Math.PI) diff += 2 * Math.PI;
-  return a + diff * t;
-}
-
 // -------------------------------------------------------------------------
 // Sprite position update (called each battle_state tick)
 // -------------------------------------------------------------------------
@@ -335,7 +319,7 @@ function updateSpritePositions(player, opponent) {
   const pw = engineToWorld(player.pos_x, player.pos_z);
   const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
 
-  // Compute per-tick deltas for movement direction
+  // Per-tick movement deltas
   const dxP = pw.x - (fighters.player._prevX  ?? pw.x);
   const dzP = pw.z - (fighters.player._prevZ  ?? pw.z);
   fighters.player._prevX = pw.x; fighters.player._prevZ = pw.z;
@@ -344,22 +328,19 @@ function updateSpritePositions(player, opponent) {
   const dzO = ow.z - (fighters.opponent._prevZ ?? ow.z);
   fighters.opponent._prevX = ow.x; fighters.opponent._prevZ = ow.z;
 
-  // Player angle: snap toward opponent when attacking, else track movement
+  // "Screen right" in this isometric view ≈ +worldX, -worldZ  → projection: (dx - dz)
+  // Player facing
   if (player.state === 'winding_up' || player.state === 'attacking') {
-    fighters.player.angle = lerpAngle(fighters.player.angle,
-      Math.atan2(ow.x - pw.x, ow.z - pw.z), 0.35);
+    fighters.player.facingRight = ((ow.x - pw.x) - (ow.z - pw.z)) >= 0;
   } else if (Math.abs(dxP) + Math.abs(dzP) > 0.15) {
-    fighters.player.angle = lerpAngle(fighters.player.angle,
-      Math.atan2(dxP, dzP), 0.15);
+    fighters.player.facingRight = (dxP - dzP) > 0;
   }
 
-  // Opponent angle
+  // Opponent facing
   if (opponent.state === 'winding_up' || opponent.state === 'attacking') {
-    fighters.opponent.angle = lerpAngle(fighters.opponent.angle,
-      Math.atan2(pw.x - ow.x, pw.z - ow.z), 0.35);
+    fighters.opponent.facingRight = ((pw.x - ow.x) - (pw.z - ow.z)) >= 0;
   } else if (Math.abs(dxO) + Math.abs(dzO) > 0.15) {
-    fighters.opponent.angle = lerpAngle(fighters.opponent.angle,
-      Math.atan2(dxO, dzO), 0.15);
+    fighters.opponent.facingRight = (dxO - dzO) > 0;
   }
 
   fighters.player.sprite.position.set(pw.x, SPRITE_H / 2, pw.z);
@@ -391,8 +372,12 @@ function animateFighterState(fighter) {
   const sp  = fighter.sprite;
   const now = performance.now();
 
-  // Apply 3D rotation — this is the full Y-axis facing direction
-  sp.rotation.y = fighter.angle ?? 0;
+  // Lock plane to always face the camera (manual billboard), then flip for direction
+  sp.rotation.y = Math.atan2(
+    camera.position.x - sp.position.x,
+    camera.position.z - sp.position.z
+  );
+  const fx = fighter.facingRight ? 1 : -1;
 
   if (fighter.flashClass && now < fighter.flashUntil) {
     if (fighter.flashClass === 'hurt') {
@@ -401,16 +386,16 @@ function animateFighterState(fighter) {
     } else if (fighter.flashClass === 'attacking') {
       sp.material.color.setRGB(1.7, 1.7, 1.7);  // brightness boost
     }
-    sp.scale.set(1, 1, 1);
+    sp.scale.set(fx, 1, 1);
   } else {
     fighter.flashClass = null;
     sp.material.color.set(0xffffff);
 
     if (fighter.state === 'winding_up') {
       const pulse = 1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ);
-      sp.scale.set(pulse, pulse, 1);
+      sp.scale.set(fx * pulse, pulse, 1);
     } else {
-      sp.scale.set(1, 1, 1);
+      sp.scale.set(fx, 1, 1);
     }
   }
 }
