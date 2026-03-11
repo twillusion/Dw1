@@ -113,8 +113,8 @@ let lastRafTime = 0;
 
 // Per-fighter Three.js objects + animation state
 const fighters = {
-  player:   { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: true,  tilt: 0 },
-  opponent: { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: false, tilt: 0 },
+  player:   { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, angle: 0 },
+  opponent: { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, angle: 0 },
 };
 
 // Projectile sprite pool: id → THREE.Sprite
@@ -123,11 +123,6 @@ const projSpritePool = {};
 // Sun direction: shadow is cast opposite the sun (sun from upper-left)
 const SUN = { x: 10, z: 8 };
 
-// Screen-space projection constants for camera at (140,140,140):
-//   camera right = (1/√2, 0, −1/√2)  →  screen_right = (dx − dz) / √2
-//   camera up    = (−1/√6,_,−1/√6)   →  screen_up    = −(dx + dz) / √6
-// TILT_FACTOR converts screen_up to the exact rotation.z needed (camera elevation correction).
-const TILT_FACTOR = Math.sqrt(6) / 2;   // ≈ 1.225
 
 const PROJ_COLORS_HEX = {
   FIRE:   0xe74c3c,
@@ -303,7 +298,7 @@ function initFighterSprites(playerData, opponentData) {
     if (f.sprite) { scene.remove(f.sprite); f.sprite.geometry.dispose(); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
     if (f.shadow) { scene.remove(f.shadow); f.shadow.material.map.dispose(); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
-    f.facingRight = (key === 'player'); f.tilt = 0;
+    f.angle = 0;
     f._prevX = undefined; f._prevZ = undefined;
   }
 
@@ -332,24 +327,6 @@ function lerpAngle(a, b, t) {
   return a + diff * t;
 }
 
-// Project a world-space XZ delta onto the camera's screen axes.
-// camera right = (1/√2, 0, −1/√2)  →  r = (dx − dz) / √2
-// camera up    = (−1/√6, _, −1/√6)  →  u = −(dx + dz) / √6
-function screenDir(dx, dz) {
-  return { r: (dx - dz) / Math.SQRT2, u: -(dx + dz) / Math.sqrt(6) };
-}
-
-// Apply screen-space facing from a world-space direction (dx, dz).
-// fast=true snaps quickly (attacking), fast=false follows movement smoothly.
-function applyScreenFacing(fighter, dx, dz, fast) {
-  const sd  = screenDir(dx, dz);
-  const mag = Math.sqrt(sd.r * sd.r + sd.u * sd.u);
-  if (mag < 0.001) return;
-  if (Math.abs(sd.r) / mag > 0.15) fighter.facingRight = sd.r > 0;
-  const tiltTarget = Math.atan2(sd.u * TILT_FACTOR, Math.abs(sd.r) + 0.001);
-  fighter.tilt = lerpAngle(fighter.tilt, tiltTarget, fast ? 0.35 : 0.15);
-}
-
 // -------------------------------------------------------------------------
 // Sprite position update (called each battle_state tick)
 // -------------------------------------------------------------------------
@@ -368,22 +345,22 @@ function updateSpritePositions(player, opponent) {
   const dzO = ow.z - (fighters.opponent._prevZ ?? ow.z);
   fighters.opponent._prevX = ow.x; fighters.opponent._prevZ = ow.z;
 
-  // Player screen-facing
+  // Player Y-axis angle tracking
   if (player.state === 'winding_up' || player.state === 'attacking') {
-    applyScreenFacing(fighters.player, ow.x - pw.x, ow.z - pw.z, true);
+    const target = Math.atan2(-(ow.z - pw.z), ow.x - pw.x);
+    fighters.player.angle = lerpAngle(fighters.player.angle, target, 0.35);
   } else if (Math.abs(dxP) + Math.abs(dzP) > 0.15) {
-    applyScreenFacing(fighters.player, dxP, dzP, false);
-  } else {
-    fighters.player.tilt = lerpAngle(fighters.player.tilt, 0, 0.08); // idle: return upright
+    const target = Math.atan2(-dzP, dxP);
+    fighters.player.angle = lerpAngle(fighters.player.angle, target, 0.15);
   }
 
-  // Opponent screen-facing
+  // Opponent Y-axis angle tracking
   if (opponent.state === 'winding_up' || opponent.state === 'attacking') {
-    applyScreenFacing(fighters.opponent, pw.x - ow.x, pw.z - ow.z, true);
+    const target = Math.atan2(-(pw.z - ow.z), pw.x - ow.x);
+    fighters.opponent.angle = lerpAngle(fighters.opponent.angle, target, 0.35);
   } else if (Math.abs(dxO) + Math.abs(dzO) > 0.15) {
-    applyScreenFacing(fighters.opponent, dxO, dzO, false);
-  } else {
-    fighters.opponent.tilt = lerpAngle(fighters.opponent.tilt, 0, 0.08);
+    const target = Math.atan2(-dzO, dxO);
+    fighters.opponent.angle = lerpAngle(fighters.opponent.angle, target, 0.15);
   }
 
   fighters.player.sprite.position.set(pw.x, SPRITE_H / 2, pw.z);
@@ -415,16 +392,13 @@ function animateFighterState(fighter) {
   const sp  = fighter.sprite;
   const now = performance.now();
 
-  // Billboard: plane always faces the camera so the sprite is fully visible
-  sp.rotation.y = Math.atan2(
-    camera.position.x - sp.position.x,
-    camera.position.z - sp.position.z
-  );
-  // Screen-space tilt: rotates the image so the face points toward movement direction
-  sp.rotation.z = fighter.tilt ?? 0;
-
-  // Left/right flip via scale.x
-  const fx = fighter.facingRight ? 1 : -1;
+  // Y-axis rotation: sprite stays upright, face points in movement direction
+  const a   = fighter.angle ?? 0;
+  const dot = (camera.position.x - sp.position.x) * Math.sin(a)
+            + (camera.position.z - sp.position.z) * Math.cos(a);
+  const flipX = dot >= 0 ? 1 : -1;
+  sp.rotation.y = dot >= 0 ? a : a + Math.PI;
+  sp.rotation.z = 0;  // never tilt toward sky/ground
 
   if (fighter.flashClass && now < fighter.flashUntil) {
     if (fighter.flashClass === 'hurt') {
@@ -433,16 +407,16 @@ function animateFighterState(fighter) {
     } else if (fighter.flashClass === 'attacking') {
       sp.material.color.setRGB(1.7, 1.7, 1.7);  // brightness boost
     }
-    sp.scale.set(fx, 1, 1);
+    sp.scale.set(flipX, 1, 1);
   } else {
     fighter.flashClass = null;
     sp.material.color.set(0xffffff);
 
     if (fighter.state === 'winding_up') {
       const pulse = 1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ);
-      sp.scale.set(fx * pulse, pulse, 1);
+      sp.scale.set(flipX * pulse, pulse, 1);
     } else {
-      sp.scale.set(fx, 1, 1);
+      sp.scale.set(flipX, 1, 1);
     }
   }
 }
