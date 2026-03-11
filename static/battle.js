@@ -126,6 +126,9 @@ const fighters = {
 // Projectile sprite pool: id → THREE.Sprite
 const projSpritePool = {};
 
+// Sun direction: shadow is cast opposite the sun (sun from upper-left)
+const SUN = { x: 10, z: 8 };
+
 const PROJ_COLORS_HEX = {
   FIRE:   0xe74c3c,
   BATTLE: 0x95a5a6,
@@ -249,6 +252,15 @@ function makeShadowMesh() {
   return m;
 }
 
+function makeShadowMesh() {
+  const g = new THREE.PlaneGeometry(24, 10);
+  g.rotateY(Math.atan2(SUN.x, SUN.z));  // align elongation with sun angle
+  g.rotateX(-Math.PI / 2);
+  return new THREE.Mesh(g, new THREE.MeshBasicMaterial({
+    color: 0x000000, transparent: true, opacity: 0.38, depthWrite: false,
+  }));
+}
+
 // -------------------------------------------------------------------------
 // Fighter sprite init (called on battle_started and rematch)
 // -------------------------------------------------------------------------
@@ -257,20 +269,25 @@ function initFighterSprites(playerData, opponentData) {
   for (const key of ['player', 'opponent']) {
     const f = fighters[key];
     if (f.sprite) { scene.remove(f.sprite); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
+    if (f.shadow) { scene.remove(f.shadow); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
   }
 
-  fighters.player.sprite  = makeEmojiSprite(playerData.emoji);
+  fighters.player.sprite   = makeEmojiSprite(playerData.emoji);
+  fighters.player.shadow   = makeShadowMesh();
   fighters.opponent.sprite = makeEmojiSprite(opponentData.emoji);
+  fighters.opponent.shadow = makeShadowMesh();
 
-  scene.add(fighters.player.sprite);
-  scene.add(fighters.opponent.sprite);
+  scene.add(fighters.player.sprite,   fighters.player.shadow);
+  scene.add(fighters.opponent.sprite, fighters.opponent.shadow);
 
   // Place at initial positions
   const pw = engineToWorld(playerData.pos_x,   playerData.pos_z);
   const ow = engineToWorld(opponentData.pos_x, opponentData.pos_z);
   fighters.player.sprite.position.set(pw.x, 10, pw.z);
+  fighters.player.shadow.position.set(pw.x + SUN.x, 0.05, pw.z + SUN.z);
   fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
+  fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
 }
 
 // -------------------------------------------------------------------------
@@ -281,10 +298,12 @@ function updateSpritePositions(player, opponent) {
 
   const pw = engineToWorld(player.pos_x, player.pos_z);
   fighters.player.sprite.position.set(pw.x, 10, pw.z);
+  fighters.player.shadow.position.set(pw.x + SUN.x, 0.05, pw.z + SUN.z);
   fighters.player.state = player.state;
 
   const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
   fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
+  fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
   fighters.opponent.state = opponent.state;
 }
 
