@@ -113,8 +113,8 @@ let lastRafTime = 0;
 
 // Per-fighter Three.js objects + animation state
 const fighters = {
-  player:   { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: true  },
-  opponent: { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, facingRight: false },
+  player:   { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, angle: Math.PI / 4 },
+  opponent: { sprite: null, shadow: null, state: 'idle', flashClass: null, flashUntil: 0, angle: Math.PI / 4 },
 };
 
 // Projectile sprite pool: id → THREE.Sprite
@@ -209,13 +209,18 @@ function onResize() {
 // -------------------------------------------------------------------------
 // Emoji sprite helpers
 // -------------------------------------------------------------------------
-function makeEmojiTexture(emoji) {
+
+// Emoji whose glyphs naturally face LEFT; flip them so all face RIGHT in texture
+const EMOJI_FACES_LEFT = new Set(['🦖', '🕊️', '🦅']);
+
+function makeEmojiTexture(emoji, flipH = false) {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 256;
   const ctx = cv.getContext('2d');
   ctx.font = '192px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  if (flipH) { ctx.translate(256, 0); ctx.scale(-1, 1); }
   ctx.fillText(emoji, 128, 136);
   const tex = new THREE.CanvasTexture(cv);
   tex.generateMipmaps = false;
@@ -225,9 +230,10 @@ function makeEmojiTexture(emoji) {
 }
 
 function makeEmojiSprite(emoji) {
+  const flipH = EMOJI_FACES_LEFT.has(emoji);
   const geo = new THREE.PlaneGeometry(SPRITE_W, SPRITE_H);
   const mat = new THREE.MeshBasicMaterial({
-    map: makeEmojiTexture(emoji),
+    map: makeEmojiTexture(emoji, flipH),
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -250,13 +256,14 @@ function makeShadowMesh() {
   return m;
 }
 
-function makeShadowTexture(emoji) {
+function makeShadowTexture(emoji, flipH = false) {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 256;
   const ctx = cv.getContext('2d');
   ctx.font = '192px serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  if (flipH) { ctx.translate(256, 0); ctx.scale(-1, 1); }
   ctx.fillText(emoji, 128, 136);
   const img = ctx.getImageData(0, 0, 256, 256);
   for (let i = 0; i < img.data.length; i += 4) {
@@ -270,11 +277,12 @@ function makeShadowTexture(emoji) {
 }
 
 function makeShadowMesh(emoji) {
+  const flipH = EMOJI_FACES_LEFT.has(emoji);
   const g = new THREE.PlaneGeometry(24, 10);
   g.rotateY(Math.atan2(SUN.x, SUN.z));  // align elongation with sun angle
   g.rotateX(-Math.PI / 2);
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    map: makeShadowTexture(emoji),
+    map: makeShadowTexture(emoji, flipH),
     transparent: true, opacity: 0.55, depthWrite: false,
   }));
 }
@@ -289,7 +297,7 @@ function initFighterSprites(playerData, opponentData) {
     if (f.sprite) { scene.remove(f.sprite); f.sprite.geometry.dispose(); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
     if (f.shadow) { scene.remove(f.shadow); f.shadow.material.map.dispose(); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
-    f.facingRight = (key === 'player');
+    f.angle = Math.PI / 4;
     f._prevX = undefined; f._prevZ = undefined;
   }
 
@@ -310,6 +318,14 @@ function initFighterSprites(playerData, opponentData) {
   fighters.opponent.shadow.position.set(ow.x + SUN.x, 0.05, ow.z + SUN.z);
 }
 
+// Smoothly interpolate between two angles (shortest arc)
+function lerpAngle(a, b, t) {
+  let diff = b - a;
+  while (diff >  Math.PI) diff -= 2 * Math.PI;
+  while (diff < -Math.PI) diff += 2 * Math.PI;
+  return a + diff * t;
+}
+
 // -------------------------------------------------------------------------
 // Sprite position update (called each battle_state tick)
 // -------------------------------------------------------------------------
@@ -328,19 +344,22 @@ function updateSpritePositions(player, opponent) {
   const dzO = ow.z - (fighters.opponent._prevZ ?? ow.z);
   fighters.opponent._prevX = ow.x; fighters.opponent._prevZ = ow.z;
 
-  // "Screen right" in this isometric view ≈ +worldX, -worldZ  → projection: (dx - dz)
-  // Player facing
+  // Player: face toward opponent when attacking; otherwise track movement direction
   if (player.state === 'winding_up' || player.state === 'attacking') {
-    fighters.player.facingRight = ((ow.x - pw.x) - (ow.z - pw.z)) >= 0;
+    fighters.player.angle = lerpAngle(fighters.player.angle,
+      Math.atan2(ow.x - pw.x, ow.z - pw.z), 0.35);
   } else if (Math.abs(dxP) + Math.abs(dzP) > 0.15) {
-    fighters.player.facingRight = (dxP - dzP) > 0;
+    fighters.player.angle = lerpAngle(fighters.player.angle,
+      Math.atan2(dxP, dzP), 0.15);
   }
 
-  // Opponent facing
+  // Opponent: same
   if (opponent.state === 'winding_up' || opponent.state === 'attacking') {
-    fighters.opponent.facingRight = ((pw.x - ow.x) - (pw.z - ow.z)) >= 0;
+    fighters.opponent.angle = lerpAngle(fighters.opponent.angle,
+      Math.atan2(pw.x - ow.x, pw.z - ow.z), 0.35);
   } else if (Math.abs(dxO) + Math.abs(dzO) > 0.15) {
-    fighters.opponent.facingRight = (dxO - dzO) > 0;
+    fighters.opponent.angle = lerpAngle(fighters.opponent.angle,
+      Math.atan2(dxO, dzO), 0.15);
   }
 
   fighters.player.sprite.position.set(pw.x, SPRITE_H / 2, pw.z);
@@ -372,12 +391,8 @@ function animateFighterState(fighter) {
   const sp  = fighter.sprite;
   const now = performance.now();
 
-  // Lock plane to always face the camera (manual billboard), then flip for direction
-  sp.rotation.y = Math.atan2(
-    camera.position.x - sp.position.x,
-    camera.position.z - sp.position.z
-  );
-  const fx = fighter.facingRight ? 1 : -1;
+  // Full 3D rotation: plane normal tracks movement direction
+  sp.rotation.y = fighter.angle ?? Math.PI / 4;
 
   if (fighter.flashClass && now < fighter.flashUntil) {
     if (fighter.flashClass === 'hurt') {
@@ -386,16 +401,16 @@ function animateFighterState(fighter) {
     } else if (fighter.flashClass === 'attacking') {
       sp.material.color.setRGB(1.7, 1.7, 1.7);  // brightness boost
     }
-    sp.scale.set(fx, 1, 1);
+    sp.scale.set(1, 1, 1);
   } else {
     fighter.flashClass = null;
     sp.material.color.set(0xffffff);
 
     if (fighter.state === 'winding_up') {
       const pulse = 1 + 0.09 * Math.sin(renderTime * WINDUP_FREQ);
-      sp.scale.set(fx * pulse, pulse, 1);
+      sp.scale.set(pulse, pulse, 1);
     } else {
-      sp.scale.set(fx, 1, 1);
+      sp.scale.set(1, 1, 1);
     }
   }
 }
