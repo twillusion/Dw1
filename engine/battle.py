@@ -261,7 +261,7 @@ class BattleEngine:
         opp_threat = (other.stamina / 100.0) * 0.5 + (other.current_hp / max(1, other.max_hp)) * 0.5
         # Map threat 0–1 → delta ±5 units around base distance
         delta = (opp_threat - 0.5) * 10.0
-        f.preferred_distance = max(10.0, min(60.0, f._base_preferred_distance + delta))
+        f.preferred_distance = max(5.0, min(60.0, f._base_preferred_distance + delta))
 
     def _move_fighter(self, f: Fighter, other: Fighter):
         """
@@ -280,7 +280,7 @@ class BattleEngine:
         target = f.preferred_distance
 
         # Charge boost: melee fighters sprint when far from the opponent
-        if dist > target + 25 and f._base_preferred_distance <= 22:
+        if dist > target + 20 and f._base_preferred_distance <= 12:
             effective_speed = f.move_speed * 2.0
         else:
             effective_speed = f.move_speed

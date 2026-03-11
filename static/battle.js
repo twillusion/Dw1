@@ -156,7 +156,7 @@ function initArena() {
 
   // RTS camera: high in the sky, angled steeply down — no horizon visible
   camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
-  camera.position.set(0, 150, 80);
+  camera.position.set(0, 210, 120);
   camera.lookAt(0, 0, 0);
 
   // Ground plane (XZ, covers field + margin)
@@ -257,25 +257,20 @@ function initFighterSprites(playerData, opponentData) {
   for (const key of ['player', 'opponent']) {
     const f = fighters[key];
     if (f.sprite) { scene.remove(f.sprite); f.sprite.material.map.dispose(); f.sprite.material.dispose(); }
-    if (f.shadow) { scene.remove(f.shadow); f.shadow.material.dispose(); }
     f.state = 'idle'; f.flashClass = null; f.flashUntil = 0;
   }
 
   fighters.player.sprite  = makeEmojiSprite(playerData.emoji);
-  fighters.player.shadow  = makeShadowMesh();
   fighters.opponent.sprite = makeEmojiSprite(opponentData.emoji);
-  fighters.opponent.shadow = makeShadowMesh();
 
-  scene.add(fighters.player.sprite,   fighters.player.shadow);
-  scene.add(fighters.opponent.sprite, fighters.opponent.shadow);
+  scene.add(fighters.player.sprite);
+  scene.add(fighters.opponent.sprite);
 
   // Place at initial positions
   const pw = engineToWorld(playerData.pos_x,   playerData.pos_z);
   const ow = engineToWorld(opponentData.pos_x, opponentData.pos_z);
   fighters.player.sprite.position.set(pw.x, 10, pw.z);
-  fighters.player.shadow.position.set(pw.x, 0.05, pw.z);
   fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
-  fighters.opponent.shadow.position.set(ow.x, 0.05, ow.z);
 }
 
 // -------------------------------------------------------------------------
@@ -286,12 +281,10 @@ function updateSpritePositions(player, opponent) {
 
   const pw = engineToWorld(player.pos_x, player.pos_z);
   fighters.player.sprite.position.set(pw.x, 10, pw.z);
-  fighters.player.shadow.position.set(pw.x, 0.05, pw.z);
   fighters.player.state = player.state;
 
   const ow = engineToWorld(opponent.pos_x, opponent.pos_z);
   fighters.opponent.sprite.position.set(ow.x, 10, ow.z);
-  fighters.opponent.shadow.position.set(ow.x, 0.05, ow.z);
   fighters.opponent.state = opponent.state;
 }
 
