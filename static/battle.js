@@ -212,7 +212,7 @@ function onResize() {
 // -------------------------------------------------------------------------
 
 // Emoji whose glyphs naturally face LEFT; flip them so all face RIGHT in texture
-const EMOJI_FACES_LEFT = new Set(['🦖', '🕊️', '🦅']);
+const EMOJI_FACES_LEFT = new Set(['🦖', '🕊️', '🦅', '🐕', '🐕‍🦺']);
 
 function makeEmojiTexture(emoji, flipH = false) {
   const cv = document.createElement('canvas');

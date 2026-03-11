@@ -245,7 +245,7 @@ class BattleEngine:
             if not attacker.can_act:
                 continue
             if attacker.think_timer == 0:
-                attacker.think_timer = random.randint(8, 22)  # 0.27–0.73s pause
+                attacker.think_timer = random.randint(25, 55)  # 0.83–1.83s pause
                 continue
             attacker.think_timer -= 1
             if attacker.think_timer > 0:
@@ -294,22 +294,16 @@ class BattleEngine:
             # SHORT windup: charge into opponent's space — ignore preferred distance
             dist = abs(other.pos_z - f.pos_z)
             if dist > 1:
-                f.pos_z += f.move_speed * 1.5 * _sign(other.pos_z - f.pos_z)
+                f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
                 f.pos_z = max(5.0, min(115.0, f.pos_z))
 
         elif f.windup_action is None:
-            # --- Z-axis: approach preferred distance; never back off if already close ---
+            # --- Z-axis: approach preferred distance ---
             dist = abs(other.pos_z - f.pos_z)
             target = f.preferred_distance
 
-            # Charge boost: melee fighters sprint when far from the opponent
-            if dist > target + 20 and f._base_preferred_distance <= 8:
-                effective_speed = f.move_speed * 2.0
-            else:
-                effective_speed = f.move_speed
-
             if dist > target + 1:
-                f.pos_z += effective_speed * _sign(other.pos_z - f.pos_z)
+                f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
                 f.state = "moving"
             else:
                 f.state = "idle"
