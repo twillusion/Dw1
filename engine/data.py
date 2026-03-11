@@ -64,9 +64,9 @@ TECHNIQUES = {
         "description": "A larger fireball with more stopping power."
     },
     "Nova Blast": {
-        "power": 160, "mp_cost": 66, "range": "WIDE",
+        "power": 135, "mp_cost": 66, "range": "LONG",
         "type": FIRE, "status": None, "accuracy": 80, "status_chance": 0,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "Greymon's powerful wave of flames."
     },
     "Prominence Beam": {
@@ -116,9 +116,9 @@ TECHNIQUES = {
         "description": "A razor-sharp gust of wind."
     },
     "Storm of Silence": {
-        "power": 140, "mp_cost": 66, "range": "WIDE",
+        "power": 120, "mp_cost": 66, "range": "LONG",
         "type": AIR, "status": "CONFUSION", "accuracy": 80, "status_chance": 40,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "A howling storm that may confuse enemies."
     },
 
@@ -130,15 +130,15 @@ TECHNIQUES = {
         "description": "A venomous strike that may poison."
     },
     "Earth Shaker": {
-        "power": 110, "mp_cost": 48, "range": "WIDE",
+        "power": 95, "mp_cost": 48, "range": "LONG",
         "type": EARTH, "status": None, "accuracy": 78, "status_chance": 0,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "Triggers a ground-shaking tremor."
     },
     "Terra Force": {
-        "power": 350, "mp_cost": 120, "range": "WIDE",
+        "power": 295, "mp_cost": 120, "range": "LONG",
         "type": EARTH, "status": None, "accuracy": 65, "status_chance": 0,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "WarGreymon's ultimate technique. Immense power."
     },
 
@@ -176,17 +176,17 @@ TECHNIQUES = {
         "description": "MetalGreymon's arm cannon fires at full power."
     },
     "Genocide Attack": {
-        "power": 310, "mp_cost": 108, "range": "WIDE",
+        "power": 265, "mp_cost": 108, "range": "LONG",
         "type": MECH, "status": None, "accuracy": 65, "status_chance": 0,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "A devastating barrage of missiles."
     },
 
     # --- FILTH ---
     "Odor Spray": {
-        "power": 40, "mp_cost": 18, "range": "WIDE",
+        "power": 40, "mp_cost": 18, "range": "LONG",
         "type": FILTH, "status": "STUN", "accuracy": 88, "status_chance": 45,
-        "dodgeable": False, "delay_ticks": 45,
+        "dodgeable": True,
         "description": "A foul cloud that may briefly stun."
     },
     "Poison Claw": {
@@ -367,14 +367,14 @@ def get_type_factor(attacker_type: str, defender_type: str) -> int:
 
 # Distance (field units) within which SHORT range attacks can land.
 # Very tight: melee requires fighters to be essentially touching (~5% of field).
-SHORT_RANGE_THRESHOLD = 6
+SHORT_RANGE_THRESHOLD = 3
 
 # Fixed movement speed for all Digimon (units per tick at 30 ticks/sec)
 # Can be individualised per Digimon in a future iteration
 MOVE_SPEED = 0.72
 
 # Preferred standoff distances (field units, expanded field = 0–120 Z)
-PREFERRED_DIST_MELEE  = 5    # all SHORT range → right on top of opponent
+PREFERRED_DIST_MELEE  = 3    # all SHORT range → right on top of opponent
 PREFERRED_DIST_RANGED = 55   # all LONG range  → maintain standoff
 PREFERRED_DIST_MIXED  = 38   # mixed moveset   → medium range
 

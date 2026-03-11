@@ -69,31 +69,6 @@ class Projectile:
 
 
 # ---------------------------------------------------------------------------
-# DelayedHit (WIDE moves)
-# ---------------------------------------------------------------------------
-
-@dataclass
-class DelayedHit:
-    """A queued WIDE-range attack that lands after a fixed delay."""
-    id: int
-    attacker_name: str
-    defender_name: str
-    tech_name: str
-    damage: int
-    status: str | None
-    status_chance: int
-    ticks_remaining: int
-
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "tech_name": self.tech_name,
-            "ticks_remaining": self.ticks_remaining,
-            "attacker": self.attacker_name,
-        }
-
-
-# ---------------------------------------------------------------------------
 # Battle engine
 # ---------------------------------------------------------------------------
 
@@ -123,7 +98,6 @@ class BattleEngine:
         self.winner: str | None = None
 
         self.projectiles: list[Projectile] = []
-        self.delayed_hits: list[DelayedHit] = []
 
         # Pending finisher: waiting for player mash input
         self._pending_finisher: dict | None = None
@@ -202,10 +176,7 @@ class BattleEngine:
         # 3. Move projectiles, check collisions, despawn expired
         self._tick_projectiles()
 
-        # 4. Tick delayed-hit timers (WIDE moves)
-        self._tick_delayed_hits()
-
-        # 5. Drain HP from damage buffer
+        # 4. Drain HP from damage buffer
         for f in (self.player, self.opponent):
             if f.hp_damage_buffer > 0:
                 f.hp_damage_buffer, f.current_hp = damage_tick(
@@ -283,6 +254,9 @@ class BattleEngine:
             f.knockback_ticks -= 1
             return
 
+        # Capture positions before any updates for end-of-tick normalisation
+        old_z, old_x = f.pos_z, f.pos_x
+
         sign_to_other = _sign(other.pos_z - f.pos_z)
         dist = abs(other.pos_z - f.pos_z)
 
@@ -332,7 +306,7 @@ class BattleEngine:
             else:
                 # Spring arrive: proportional drive, decelerates near preferred distance
                 error = dist - f.preferred_distance
-                DEAD_ZONE = 4.0
+                DEAD_ZONE = 2.0
                 if abs(error) > DEAD_ZONE:
                     drive = max(-f.move_speed, min(f.move_speed, error * 0.15))
                     f.committed_z_vel = drive * sign_to_other
@@ -342,17 +316,27 @@ class BattleEngine:
                     f.state = "moving"
                 else:
                     f.committed_z_vel = 0.0
-                    f.state = "idle"
+                    # 4% chance to surge forward even while settled — prevents parking
+                    if random.random() < 0.04:
+                        f.committed_z_vel = f.move_speed * 0.6 * sign_to_other
+                        f.commit_timer = random.randint(6, 12)
+                        f.pos_z += f.committed_z_vel
+                        f.pos_z = max(5.0, min(115.0, f.pos_z))
+                        f.state = "moving"
+                    else:
+                        f.state = "idle"
 
         # 7. X-axis: wander drift — continuous lateral oscillation around opponent
+        # Dampen lateral motion when settled so forward movement stays the visual focus
         f.wander_angle += random.uniform(-0.05, 0.05)
         wander_x = max(-65.0, min(65.0, other.pos_x + math.cos(f.wander_angle) * 20.0))
-        # Gently blend strafe target toward wander ideal each tick (smooth, no snapping)
-        f.strafe_target_x += (wander_x - f.strafe_target_x) * 0.06
+        blend = 0.06 if f.state == "moving" else 0.03
+        f.strafe_target_x += (wander_x - f.strafe_target_x) * blend
 
         dx = f.strafe_target_x - f.pos_x
+        strafe_spd = 0.45 if f.state == "moving" else 0.25
         if abs(dx) > 1.0:
-            f.pos_x += _sign(dx) * f.move_speed * 0.45
+            f.pos_x += _sign(dx) * f.move_speed * strafe_spd
         f.pos_x = max(-65.0, min(65.0, f.pos_x))
 
         # 8. Lateral dodge for incoming projectiles
@@ -366,6 +350,15 @@ class BattleEngine:
                     direction = 1 if f.pos_x <= 0 else -1
                     f.pos_x = max(-65.0, min(65.0, f.pos_x + direction * f.move_speed * 1.8))
                     f.strafe_target_x = f.pos_x
+
+        # 9. Speed normalisation — prevent diagonal movement from being faster than axial
+        dz = f.pos_z - old_z
+        dx2 = f.pos_x - old_x
+        total_spd = math.sqrt(dz * dz + dx2 * dx2)
+        if total_spd > f.move_speed:
+            scale = f.move_speed / total_spd
+            f.pos_z = old_z + dz * scale
+            f.pos_x = old_x + dx2 * scale
 
     # -----------------------------------------------------------------------
     # Windup system
@@ -556,46 +549,6 @@ class BattleEngine:
         )
 
     # -----------------------------------------------------------------------
-    # Delayed-hit system (WIDE moves)
-    # -----------------------------------------------------------------------
-
-    def _tick_delayed_hits(self):
-        remaining = []
-        for dh in self.delayed_hits:
-            dh.ticks_remaining -= 1
-            if dh.ticks_remaining <= 0:
-                defender = self._get_fighter(dh.defender_name)
-                if defender:
-                    self._apply_delayed_damage(dh, defender)
-            else:
-                remaining.append(dh)
-        self.delayed_hits = remaining
-
-    def _apply_delayed_damage(self, dh: DelayedHit, defender: Fighter):
-        defender.hp_damage_buffer = min(9999, defender.hp_damage_buffer + dh.damage)
-        attacker = self._get_fighter(dh.attacker_name)
-        if attacker:
-            attacker.hit_count += 1
-            attacker.advance_finisher()
-            if attacker.finisher_ready:
-                self._trigger_finisher(attacker, defender)
-            # WIDE hit: defender staggers backward
-            defender.knockback_ticks = 8
-            defender.knockback_vel_z = attacker.move_speed * _sign(defender.pos_z - attacker.pos_z)
-
-        status_msg = ""
-        if dh.status and roll_status(dh.status_chance):
-            defender.apply_status(dh.status)
-            status_msg = f" {defender.name} is {dh.status.lower()}ed!"
-
-        self._log_event(
-            "attack",
-            f"{dh.attacker_name}'s {dh.tech_name} lands on {defender.name} → {dh.damage} dmg!{status_msg}",
-            color="#e74c3c",
-            damage=dh.damage,
-        )
-
-    # -----------------------------------------------------------------------
     # Action execution
     # -----------------------------------------------------------------------
 
@@ -638,59 +591,6 @@ class BattleEngine:
 
         tech = TECHNIQUES[tech_name]
         tech_range = tech["range"]
-
-        # --- WIDE move → immediate (has its own built-in delay; no windup needed) ---
-        if tech_range == "WIDE":
-            mp_cost = calc_mp_cost(tech["mp_cost"], attacker.brains, attacker.is_sick)
-            if attacker.current_mp < mp_cost:
-                attacker.reset_speed_buffer()
-                return
-            attacker.current_mp -= mp_cost
-            attacker.stamina = max(0.0, attacker.stamina - 15.0)
-
-            hit_chance = calc_hit_chance(
-                attacker_speed=attacker.speed,
-                victim_speed=defender.speed,
-                move_accuracy=tech["accuracy"],
-            )
-            attacker.state = "attacking"
-            attacker.reset_speed_buffer()
-            type_label = _type_label(tech["type"], defender.def_type)
-
-            if not roll_hit(hit_chance):
-                self._log_event("miss", f"{attacker.name} uses {tech_name}... but it fizzles!", color="#95a5a6")
-                return
-
-            dmg = calc_damage(
-                attacker_offense=attacker.effective_offense,
-                defender_defense=defender.effective_defense,
-                move_power=tech["power"],
-                attacker_type=tech["type"],
-                defender_type=defender.def_type,
-                mastery_count=attacker.mastery_counts.get(tech_name, 0),
-                is_enemy=not attacker.is_player,
-            )
-            delay = tech.get("delay_ticks", 45)
-            dh = DelayedHit(
-                id=self._next_id,
-                attacker_name=attacker.name,
-                defender_name=defender.name,
-                tech_name=tech_name,
-                damage=dmg,
-                status=tech["status"],
-                status_chance=tech.get("status_chance", 0),
-                ticks_remaining=delay,
-            )
-            self._next_id += 1
-            self.delayed_hits.append(dh)
-            attacker.mastery_counts[tech_name] = min(99, attacker.mastery_counts.get(tech_name, 0) + 1)
-            self._log_event(
-                "wide_warning",
-                f"⚡ {attacker.name} charges {tech_name}{type_label}! ({delay // TICK_RATE:.1f}s warning)",
-                color="#e74c3c",
-            )
-            attacker.post_action_pause = random.randint(5, 12)
-            return
 
         # Range check for SHORT moves — must be close enough before starting windup
         if tech_range == "SHORT":

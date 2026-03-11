@@ -39,7 +39,6 @@ const FINISHER_MAX_PRESSES = 60;
 
 // Cached battle state from last server tick
 let lastProjectiles = [];
-let lastDelayedHits = [];
 
 // -------------------------------------------------------------------------
 // DOM refs
@@ -87,8 +86,6 @@ const el = {
 
   arena:            document.getElementById('arena'),
   arenaCanvas:      document.getElementById('arena-canvas'),
-  wideWarning:      document.getElementById('wide-warning-overlay'),
-
   commandButtons:   document.getElementById('command-buttons'),
   techniqueButtons: document.getElementById('technique-buttons'),
   battleLog:        document.getElementById('battle-log'),
@@ -528,7 +525,6 @@ function renderLoop(timestamp) {
     updateProjectiles(lastProjectiles);
     animateFighterState(fighters.player);
     animateFighterState(fighters.opponent);
-    el.wideWarning.classList.toggle('active', lastDelayedHits.length > 0);
   }
 
   renderer.render(scene, camera);
@@ -620,7 +616,6 @@ function startBattle() {
   el.selectError.textContent = '';
   el.battleLog.innerHTML = '';
   lastProjectiles = [];
-  lastDelayedHits = [];
   showScreen('battle');
   battleActive = true;
   // Give the layout one frame to resolve canvas dimensions before resizing
@@ -634,7 +629,6 @@ function goToSelection() {
   updateProjectiles([]);  // clear projectile sprites
   hideFinisherOverlay();
   el.endOverlay.style.display = 'none';
-  el.wideWarning.classList.remove('active');
   showScreen('selection');
 }
 
@@ -642,7 +636,6 @@ function rematch() {
   el.endOverlay.style.display = 'none';
   el.battleLog.innerHTML = '';
   lastProjectiles = [];
-  lastDelayedHits = [];
   battleActive = true;
   socket.emit('start_battle', { player: playerChoice, opponent: opponentChoice });
 }
@@ -663,7 +656,6 @@ socket.on('battle_state', data => {
   updateHUD(data.player, data.opponent);
   updateSpritePositions(data.player, data.opponent);
   lastProjectiles = data.projectiles || [];
-  lastDelayedHits = data.delayed_hits || [];
 });
 
 socket.on('battle_event', entry => {
@@ -810,7 +802,6 @@ const LOG_TYPE_COLORS = {
   attack:          null,
   projectile_hit:  '#f39c12',
   projectile_miss: '#6a6a8a',
-  wide_warning:    '#e74c3c',
   miss:            '#6a6a8a',
   status:          '#9b59b6',
   finisher:        '#f39c12',
