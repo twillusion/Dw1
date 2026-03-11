@@ -245,7 +245,7 @@ class BattleEngine:
             if not attacker.can_act:
                 continue
             if attacker.think_timer == 0:
-                attacker.think_timer = random.randint(25, 55)  # 0.83–1.83s pause
+                attacker.think_timer = max(10, int(random.gauss(32, 10)))  # ~1s mean, bell curve
                 continue
             attacker.think_timer -= 1
             if attacker.think_timer > 0:
@@ -272,58 +272,90 @@ class BattleEngine:
 
     def _move_fighter(self, f: Fighter, other: Fighter):
         """
-        Move fighter toward/away from opponent to maintain preferred_distance.
-        Includes: hurt retreat, circling strafe, charge boost for melee,
-        knockback, and lateral dodge when a dodgeable projectile is incoming.
+        Organic movement toward/away from primary target using steering behaviors:
+        arrive-spring (smooth approach), wander (lateral drift), commitment windows,
+        feints, and post-action pauses. Target-agnostic: pass any Fighter as `other`
+        to support future 1vMany scenarios without structural changes.
         """
-        # --- Knockback overrides normal movement ---
+        # 1. Knockback overrides all movement
         if f.knockback_ticks > 0:
             f.pos_z = max(5.0, min(115.0, f.pos_z + f.knockback_vel_z))
             f.knockback_ticks -= 1
             return
 
-        # --- Hurt retreat: back away after taking a hit ---
+        sign_to_other = _sign(other.pos_z - f.pos_z)
+        dist = abs(other.pos_z - f.pos_z)
+
+        # 2. Hurt retreat: back away after taking a hit
         if f.hurt_retreat_timer > 0:
             f.hurt_retreat_timer -= 1
-            f.pos_z -= f.move_speed * _sign(other.pos_z - f.pos_z)
+            f.pos_z -= f.move_speed * sign_to_other
             f.pos_z = max(5.0, min(115.0, f.pos_z))
             f.state = "moving"
-            # Fall through to X-axis strafing below
 
+        # 3. SHORT windup: charge into opponent's space
         elif f.windup_action and TECHNIQUES.get(f.windup_action, {}).get("range") == "SHORT":
-            # SHORT windup: charge into opponent's space — ignore preferred distance
-            dist = abs(other.pos_z - f.pos_z)
             if dist > 1:
-                f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
+                f.pos_z += f.move_speed * sign_to_other
                 f.pos_z = max(5.0, min(115.0, f.pos_z))
 
-        elif f.windup_action is None:
-            # --- Z-axis: approach preferred distance ---
-            dist = abs(other.pos_z - f.pos_z)
-            target = f.preferred_distance
-
-            if dist > target + 1:
-                f.pos_z += f.move_speed * _sign(other.pos_z - f.pos_z)
-                f.state = "moving"
-            else:
-                f.state = "idle"
-
+        # 4. Feint in progress: step toward then retreat
+        elif f.feint_steps != 0:
+            direction = 1 if f.feint_steps > 0 else -1
+            f.pos_z += f.move_speed * direction * sign_to_other
             f.pos_z = max(5.0, min(115.0, f.pos_z))
+            f.feint_steps -= direction          # +5→+4→...→0 then flips to -5→-4→...→0
+            if f.feint_steps == 0 and direction == 1:
+                f.feint_steps = -5              # forward done → trigger retreat phase
+            f.state = "moving"
 
-        # --- X-axis: orbit/circle around opponent ---
-        if f.strafe_timer <= 0:
-            orbit_offset = random.uniform(20.0, 50.0) * random.choice([-1, 1])
-            f.strafe_target_x = max(-65.0, min(65.0, other.pos_x + orbit_offset))
-            f.strafe_timer = random.randint(30, 60)
-        else:
-            f.strafe_timer -= 1
+        # 5. Post-action pause: brief hesitation after firing an attack
+        elif f.post_action_pause > 0:
+            f.post_action_pause -= 1
+            f.state = "idle"
+
+        # 6. Normal Z: spring arrive + commitment windows
+        elif f.windup_action is None:
+            # Feint cooldown tick and trigger
+            if f.feint_cooldown > 0:
+                f.feint_cooldown -= 1
+            elif random.random() < 0.015:       # ~1.5% per tick ≈ once every ~2s
+                f.feint_steps = 5
+                f.feint_cooldown = random.randint(60, 120)
+
+            if f.commit_timer > 0:
+                # Locked into a committed Z velocity — don't re-evaluate
+                f.commit_timer -= 1
+                f.pos_z += f.committed_z_vel
+                f.pos_z = max(5.0, min(115.0, f.pos_z))
+                f.state = "moving" if abs(f.committed_z_vel) > 0.1 else "idle"
+            else:
+                # Spring arrive: proportional drive, decelerates near preferred distance
+                error = dist - f.preferred_distance
+                DEAD_ZONE = 4.0
+                if abs(error) > DEAD_ZONE:
+                    drive = max(-f.move_speed, min(f.move_speed, error * 0.15))
+                    f.committed_z_vel = drive * sign_to_other
+                    f.commit_timer = random.randint(8, 18)
+                    f.pos_z += f.committed_z_vel
+                    f.pos_z = max(5.0, min(115.0, f.pos_z))
+                    f.state = "moving"
+                else:
+                    f.committed_z_vel = 0.0
+                    f.state = "idle"
+
+        # 7. X-axis: wander drift — continuous lateral oscillation around opponent
+        f.wander_angle += random.uniform(-0.05, 0.05)
+        wander_x = max(-65.0, min(65.0, other.pos_x + math.cos(f.wander_angle) * 20.0))
+        # Gently blend strafe target toward wander ideal each tick (smooth, no snapping)
+        f.strafe_target_x += (wander_x - f.strafe_target_x) * 0.06
 
         dx = f.strafe_target_x - f.pos_x
         if abs(dx) > 1.0:
             f.pos_x += _sign(dx) * f.move_speed * 0.45
         f.pos_x = max(-65.0, min(65.0, f.pos_x))
 
-        # --- Lateral dodge for incoming projectiles ---
+        # 8. Lateral dodge for incoming projectiles
         for p in self.projectiles:
             if p.defender_name != f.name or not p.dodgeable:
                 continue
@@ -333,7 +365,7 @@ class BattleEngine:
                 if random.random() < 0.40:
                     direction = 1 if f.pos_x <= 0 else -1
                     f.pos_x = max(-65.0, min(65.0, f.pos_x + direction * f.move_speed * 1.8))
-                    f.strafe_target_x = f.pos_x  # prevent immediate drift back
+                    f.strafe_target_x = f.pos_x
 
     # -----------------------------------------------------------------------
     # Windup system
@@ -412,6 +444,7 @@ class BattleEngine:
             self._next_id += 1
             self.projectiles.append(proj)
             self._log_event("attack", f"{attacker.name} fires {tech_name}{type_label} → {dmg} dmg incoming!", color=attacker.color, damage=dmg, tech_name=tech_name)
+            attacker.post_action_pause = random.randint(5, 12)
             return
 
         # --- SHORT move → instant damage ---
@@ -445,6 +478,7 @@ class BattleEngine:
             defender.apply_status(tech["status"])
             status_msg = f" {defender.name} is {tech['status'].lower()}ed!"
         self._log_event("attack", f"{attacker.name} uses {tech_name}{type_label} → {dmg} dmg!{status_msg}", color=attacker.color, damage=dmg, tech_name=tech_name)
+        attacker.post_action_pause = random.randint(5, 12)
         attacker.advance_finisher()
         if attacker.finisher_ready:
             self._trigger_finisher(attacker, defender)
@@ -655,6 +689,7 @@ class BattleEngine:
                 f"⚡ {attacker.name} charges {tech_name}{type_label}! ({delay // TICK_RATE:.1f}s warning)",
                 color="#e74c3c",
             )
+            attacker.post_action_pause = random.randint(5, 12)
             return
 
         # Range check for SHORT moves — must be close enough before starting windup

@@ -99,6 +99,14 @@ class Fighter:
     # Think delay — set fresh each time can_act fires; pauses before committing
     think_timer: int = field(default=0, init=False)
 
+    # Organic movement state
+    wander_angle: float    = field(default=0.0, init=False)  # continuous lateral drift angle
+    commit_timer: int      = field(default=0,   init=False)  # ticks locked to committed_z_vel
+    committed_z_vel: float = field(default=0.0, init=False)  # locked Z velocity per tick
+    post_action_pause: int = field(default=0,   init=False)  # movement hesitation after attack
+    feint_cooldown: int    = field(default=0,   init=False)  # ticks until next feint allowed
+    feint_steps: int       = field(default=0,   init=False)  # +N=fwd ticks, -N=back ticks
+
     # Techniques available
     techniques: list = field(default_factory=list)
     finisher_name: str = ""
