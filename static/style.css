@@ -134,7 +134,8 @@ select:hover { border-color: #8080cc; }
   line-height: 1.7;
   min-height: 140px;
 }
-.preview-emoji { font-size: 36px; display: block; text-align: center; margin-bottom: 8px; }
+.preview-emoji { display: flex; justify-content: center; margin-bottom: 8px; }
+.preview-emoji canvas { image-rendering: pixelated; }
 .preview-name  { font-family: var(--font-pixel); font-size: 9px; color: var(--text-bright); }
 .preview-stage { color: var(--text-dim); font-size: 10px; }
 .preview-stat  { display: flex; justify-content: space-between; }
@@ -300,7 +301,8 @@ select:hover { border-color: #8080cc; }
   margin-bottom: 5px;
   flex-wrap: wrap;
 }
-.ahud-emoji { font-size: 16px; }
+.ahud-emoji { display: flex; align-items: center; }
+.ahud-emoji canvas { image-rendering: pixelated; }
 .ahud-name {
   font-family: var(--font-pixel);
   font-size: 7px;

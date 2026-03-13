@@ -205,33 +205,253 @@ function onResize() {
 }
 
 // -------------------------------------------------------------------------
-// Emoji sprite helpers
+// Pixel-art sprite data  (16 × 16 grids; '.' = transparent)
 // -------------------------------------------------------------------------
+const PIXEL_SPRITES = {
+  Agumon: {
+    pal: { K:'#111',M:'#e87c1e',L:'#ffaa55',D:'#964000',W:'#fff',B:'#f4c07a' },
+    px: [
+      '....KKKKKK......',
+      '...KLLoooLK.....',
+      '..KLoooooooK....',
+      '..KLWKooKWLK....',
+      '..KooooooooK....',
+      '..KKBBBBBBK.....',
+      '...KMMMMMMK.....',
+      '..KMMMBBMMMk....',
+      '.KMMMMBBMMMMk...',
+      '.KMMMMBBMMMMk...',
+      '..KMMMBBMMMk....',
+      '...KMMMMMMMk....',
+      '....KooKKooK....',
+      '....KMK..KMK....',
+      '....KMK..KMK....',
+      '...KDDKKKKDDK...',
+    ],
+  },
+  Greymon: {
+    pal: { K:'#111',O:'#c0392b',L:'#e74c3c',B:'#2980b9',W:'#fff',D:'#7b241c',Y:'#e87c1e' },
+    px: [
+      '.KKKKKKKKKKK....',
+      '.KBBBBoooooBK...',
+      'KBBBBooooooBBK..',
+      'KBBoooooooooBK..',
+      'KBooooooooooBK..',
+      'KKLoooooooooKK..',
+      '.KYYYYYYYYYYk...',
+      'KYYYYLLLYYYYYk..',
+      'KYYYYLLLYYYYYk..',
+      'KYYYYYYYYYYYYk..',
+      '.KYYYYYYYYYYk...',
+      '..KYYYKKYYYk....',
+      '...KYYk..KYYk...',
+      '...KYYk..KYYk...',
+      '..KDDDk..KDDDk..',
+      '.KDDDK....KDDDK.',
+    ],
+  },
+  MetalGreymon: {
+    pal: { K:'#111',O:'#e87c1e',B:'#2980b9',G:'#7f8c8d',S:'#bdc3c7',W:'#fff',D:'#964000' },
+    px: [
+      '....KKKKKKK.....',
+      '...KOBBBBOoK....',
+      '..KOBBBBBBOoK...',
+      '..KOBKooKBoOK...',
+      '..KOooooooooK...',
+      '...KOOOOOOOOOK..',
+      '..KOOOOOOOOOk...',
+      '.KOOGGOOOOOOk...',
+      'KOOGSSGOOOOOOk..',
+      'KOOGSSGOOOOOOk..',
+      '.KOOGGOOOOOOk...',
+      '..KOOOOOOOOOk...',
+      '...KOOKKOOOk....',
+      '...KOOk..KOOk...',
+      '...KOOk..KOOk...',
+      '..KDDDk..KDDDk..',
+    ],
+  },
+  WarGreymon: {
+    pal: { K:'#111',O:'#d35400',A:'#cd7f32',Y:'#f1c40f',W:'#fff',D:'#8B4513',L:'#e67e22' },
+    px: [
+      '...KAAAKKAAK....',
+      '..KAOOoooOOAK...',
+      '.KAAOOOoOOAAK...',
+      '.KAAOWKoKWOAAK..',
+      '.KAAOoooooOAAK..',
+      'KAAOOoooooOAAKK.',
+      'KAAAOooooOAAAK..',
+      'KAAAYYooYYAAAk..',
+      '.KAAYYooYYAAk...',
+      '.KAAOOooOOAAk...',
+      '..KAOOOoOOAk....',
+      '...KAOOOOAk.....',
+      '....KAOKAOk.....',
+      '....KAAk.KAAk...',
+      '....KAAk.KAAk...',
+      '...KYYKk.KYYKk..',
+    ],
+  },
+  Garurumon: {
+    pal: { K:'#111',W:'#ecf0f1',B:'#3498db',G:'#bdc3c7',D:'#2c3e50',E:'#1a252f' },
+    px: [
+      '..........KKKK..',
+      '.KKKK.....KWWoK.',
+      'KWWWWk....KWWoK.',
+      'KWBWBWk...KWWEK.',
+      'KWBWBWWkKKWWWKK.',
+      'KWWWWWWWWWWWKoo.',
+      '.KWWWWWWWWWWWWk.',
+      '.KWBBWWWWBBWWWk.',
+      'KKWBWWWWWBWWWkK.',
+      '.KWWWWWWWWWWWKK.',
+      '.KWKK.KWK.KWK...',
+      '.KWK..KWK.KWK...',
+      '.KWK..KWK.KWK...',
+      'KWWK.KWWK.KWWK..',
+      'KBBK.KBBK.KBBK..',
+      'KKKK.KKKK.KKKK..',
+    ],
+  },
+  WereGarurumon: {
+    pal: { K:'#111',P:'#9b59b6',L:'#d7bde2',G:'#616a6b',W:'#fff',D:'#6c3483' },
+    px: [
+      '....KKKKKK......',
+      '...KPPoooPK.....',
+      '..KPPoooooPK....',
+      '..KPDKoooKDPK...',
+      '..KPooooooPK....',
+      '..KKLLLLLKK.....',
+      '...KPPPPPPK.....',
+      '..KPPLLLLPPk....',
+      '.KPPPPLLPPPPk...',
+      '.KPPPPLLPPPPk...',
+      '..KPPPLLPPPk....',
+      '..KPPLPPPPk.....',
+      '...KPK.KPPk.....',
+      '...KPK..KPk.....',
+      '..KPPk..KPPk....',
+      '.KDDKk..KDDKk...',
+    ],
+  },
+  MetalGarurumon: {
+    pal: { K:'#111',B:'#2980b9',S:'#bdc3c7',C:'#1a5276',W:'#fff',Y:'#f1c40f',D:'#21618c' },
+    px: [
+      '..........KKKK..',
+      '.KKKKK....KBBooK',
+      'KSSSSSk...KBSoYK',
+      'KSSSSSSk..KBBBBK',
+      'KSSSSSSKkKBBBKK.',
+      'KBBBBBBBBBBBKoo.',
+      '.KBBBBBBBBBBBSK.',
+      '.KBSSBBBBSSBBBk.',
+      'KKBSSBBBSSBBBk..',
+      '.KBBBBBBBBBBKK..',
+      '.KBKK.KBK.KBK...',
+      '.KBK..KBK.KBK...',
+      '.KBK..KBK.KBK...',
+      'KBBK.KBBK.KBBK..',
+      'KBSK.KBSK.KBSK..',
+      'KKKK.KKKK.KKKK..',
+    ],
+  },
+  Angemon: {
+    pal: { K:'#111',W:'#fff',G:'#f1c40f',S:'#f5cba7',B:'#5dade2',R:'#e8daef' },
+    px: [
+      '....KGGGGKK.....',
+      '...KGGWWWGGk....',
+      '..KGGWWSWWGGk...',
+      '..KGSSKEKSSGk...',
+      '..KGSSSSSGKk....',
+      '...KKKGGKKk.....',
+      'KKWWWWWWWWWWKK..',
+      'KWWWWRRRRWWWWk..',
+      '.KWWWRGGGRWWWk..',
+      '.KWWWRGGGRWWWk..',
+      'KWWWWWRRRWWWWWk.',
+      '.KKWWWRRRWWWkK..',
+      '...KWWRRRWWk....',
+      '....KWk.KWk.....',
+      '....KWk.KWk.....',
+      '...KGGk.KGGk....',
+    ],
+  },
+  Birdramon: {
+    pal: { K:'#111',R:'#c0392b',L:'#e74c3c',O:'#e67e22',Y:'#f1c40f',W:'#fff' },
+    px: [
+      '.......KKKK.....',
+      '......KLLLoK....',
+      '.....KLRLLoK....',
+      'KKK..KLLoWoKKK..',
+      'KRLk.KLLoooKLRk.',
+      'KRRLk.KYYKkLLRk.',
+      'KOORLk.KOk.RLRk.',
+      '.KOOLKOOOKLLRk..',
+      '..KOOOOOOOOOk...',
+      '..KOORRRRROOk...',
+      '...KLRRRRRLk....',
+      '....KRRRRRk.....',
+      '....KORRROk.....',
+      '.....KYKk.......',
+      '.....KYKk.......',
+      '....KYYKk.......',
+    ],
+  },
+  SkullGreymon: {
+    pal: { K:'#111',S:'#aab7b8',D:'#2c3e50',R:'#e74c3c',T:'#1abc9c',B:'#0a0a0a' },
+    px: [
+      '....KKKKKK......',
+      '...KSSDDSSk.....',
+      '..KSSDoooDSk....',
+      '..KSRKooKRSk....',
+      '..KSSooooooSk...',
+      '..KDKSSSSSKDk...',
+      '...KDDDDDDk.....',
+      '..KDSSSSSSSDk...',
+      '.KDSSSTTSSSSDk..',
+      '.KDSSTTTTSSSDk..',
+      '..KDSSSSSSSDk...',
+      '...KDSSSSSdk....',
+      '....KSDKDSk.....',
+      '....KSSk.KSSk...',
+      '....KSSk.KSSk...',
+      '...KDDk..KDDk...',
+    ],
+  },
+};
 
-// Emoji whose glyphs naturally face LEFT; flip them so all face RIGHT in texture
-const EMOJI_FACES_LEFT = new Set(['🦖', '🕊️', '🦅', '🐕', '🐕‍🦺']);
+// Draw a named Digimon's pixel art onto ctx at pixel size `ps` (canvas pixels per grid cell)
+function drawPixelArt(ctx, name, ps) {
+  const art = PIXEL_SPRITES[name];
+  if (!art) return;
+  for (let r = 0; r < art.px.length; r++) {
+    const row = art.px[r];
+    for (let c = 0; c < row.length && c < 16; c++) {
+      const ch = row[c];
+      if (ch === '.' || ch === ' ') continue;
+      ctx.fillStyle = art.pal[ch] || '#f0f';
+      ctx.fillRect(c * ps, r * ps, ps, ps);
+    }
+  }
+}
 
-function makeEmojiTexture(emoji, flipH = false) {
+function makePixelArtTexture(name) {
   const cv = document.createElement('canvas');
   cv.width = cv.height = 256;
   const ctx = cv.getContext('2d');
-  ctx.font = '192px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  if (flipH) { ctx.translate(256, 0); ctx.scale(-1, 1); }
-  ctx.fillText(emoji, 128, 136);
+  drawPixelArt(ctx, name, 16);
   const tex = new THREE.CanvasTexture(cv);
   tex.generateMipmaps = false;
-  tex.minFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.NearestFilter;
+  tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
 
-function makeEmojiSprite(emoji) {
-  const flipH = EMOJI_FACES_LEFT.has(emoji);
+function makePixelArtSprite(name) {
   const geo = new THREE.PlaneGeometry(SPRITE_W, SPRITE_H);
   const mat = new THREE.MeshBasicMaterial({
-    map: makeEmojiTexture(emoji, flipH),
+    map: makePixelArtTexture(name),
     transparent: true,
     depthWrite: false,
     side: THREE.DoubleSide,
@@ -241,47 +461,25 @@ function makeEmojiSprite(emoji) {
   return mesh;
 }
 
-function makeShadowMesh() {
-  const g = new THREE.PlaneGeometry(24, 12);
-  g.rotateX(-Math.PI / 2);
-  const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    color: 0x000000,
-    transparent: true,
-    opacity: 0.40,
-    depthWrite: false,
-  }));
-  m.position.y = 0.05;
-  return m;
-}
-
-function makeShadowTexture(emoji, flipH = false) {
+// Return a <canvas> element with pixel art drawn at hudSize × hudSize px
+function makeHudCanvas(name, hudSize = 48) {
   const cv = document.createElement('canvas');
-  cv.width = cv.height = 256;
-  const ctx = cv.getContext('2d');
-  ctx.font = '192px serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  if (flipH) { ctx.translate(256, 0); ctx.scale(-1, 1); }
-  ctx.fillText(emoji, 128, 136);
-  const img = ctx.getImageData(0, 0, 256, 256);
-  for (let i = 0; i < img.data.length; i += 4) {
-    img.data[i] = img.data[i + 1] = img.data[i + 2] = 0;  // black, keep alpha
-  }
-  ctx.putImageData(img, 0, 0);
-  const tex = new THREE.CanvasTexture(cv);
-  tex.generateMipmaps = false;
-  tex.minFilter = THREE.LinearFilter;
-  return tex;
+  const ps = Math.floor(hudSize / 16);
+  cv.width = cv.height = ps * 16;
+  cv.style.imageRendering = 'pixelated';
+  drawPixelArt(cv.getContext('2d'), name, ps);
+  return cv;
 }
 
-function makeShadowMesh(emoji) {
-  const flipH = EMOJI_FACES_LEFT.has(emoji);
+function makeShadowMesh() {
   const g = new THREE.PlaneGeometry(24, 10);
-  g.rotateY(Math.atan2(SUN.x, SUN.z));  // align elongation with sun angle
+  g.rotateY(Math.atan2(SUN.x, SUN.z));
   g.rotateX(-Math.PI / 2);
   return new THREE.Mesh(g, new THREE.MeshBasicMaterial({
-    map: makeShadowTexture(emoji, flipH),
-    transparent: true, opacity: 0.55, depthWrite: false,
+    color: 0x000000,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
   }));
 }
 
@@ -299,10 +497,10 @@ function initFighterSprites(playerData, opponentData) {
     f._prevX = undefined; f._prevZ = undefined;
   }
 
-  fighters.player.sprite   = makeEmojiSprite(playerData.emoji);
-  fighters.player.shadow   = makeShadowMesh(playerData.emoji);
-  fighters.opponent.sprite = makeEmojiSprite(opponentData.emoji);
-  fighters.opponent.shadow = makeShadowMesh(opponentData.emoji);
+  fighters.player.sprite   = makePixelArtSprite(playerData.name);
+  fighters.player.shadow   = makeShadowMesh();
+  fighters.opponent.sprite = makePixelArtSprite(opponentData.name);
+  fighters.opponent.shadow = makeShadowMesh();
 
   scene.add(fighters.player.sprite,   fighters.player.shadow);
   scene.add(fighters.opponent.sprite, fighters.opponent.shadow);
@@ -553,7 +751,7 @@ function buildSelectors() {
     names.forEach(name => {
       const opt = document.createElement('option');
       opt.value = name;
-      opt.textContent = `${digimonData[name].emoji}  ${name}  [${digimonData[name].stage}]`;
+      opt.textContent = `${name}  [${digimonData[name].stage}]`;
       sel.appendChild(opt);
     });
     sel.value = idx === 0 ? 'Greymon' : 'Garurumon';
@@ -567,7 +765,7 @@ function updatePreview(selectEl, previewEl) {
   const d = digimonData[name];
   if (!d) return;
   previewEl.innerHTML = `
-    <span class="preview-emoji">${d.emoji}</span>
+    <div class="preview-emoji"></div>
     <div class="preview-name">${name}</div>
     <div class="preview-stage">${d.stage}</div>
     <div style="margin-top:8px">
@@ -584,6 +782,9 @@ function updatePreview(selectEl, previewEl) {
       ).join(' · ')}
     </div>
   `;
+  const pxCv = makeHudCanvas(name, 96);
+  pxCv.style.imageRendering = 'pixelated';
+  previewEl.querySelector('.preview-emoji').appendChild(pxCv);
 }
 
 // -------------------------------------------------------------------------
@@ -708,11 +909,13 @@ socket.on('error', data => {
 // HUD updates
 // -------------------------------------------------------------------------
 function initHUD(player, opponent) {
-  el.oppEmoji.textContent = opponent.emoji;
+  el.oppEmoji.innerHTML = '';
+  el.oppEmoji.appendChild(makeHudCanvas(opponent.name, 48));
   el.oppName.textContent  = opponent.name;
   el.oppStage.textContent = `[${opponent.stage}]`;
 
-  el.plEmoji.textContent  = player.emoji;
+  el.plEmoji.innerHTML = '';
+  el.plEmoji.appendChild(makeHudCanvas(player.name, 48));
   el.plName.textContent   = player.name;
   el.plStage.textContent  = `[${player.stage}]`;
 
